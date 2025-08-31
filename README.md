@@ -1,15 +1,14 @@
 # Global Climate Classification Changes
 
-# Global Climate Classification Changes
-
 [![R](https://img.shields.io/badge/R-≥4.3-blue)](https://www.r-project.org/)
+[![Positron IDE](https://img.shields.io/badge/Positron-IDE-lightgrey)](https://posit.co/products/ide/)
 [![Quarto](https://img.shields.io/badge/Quarto-Report-lightgrey)](https://quarto.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ---
 
 ## Overview  
 This project analyzes **ERA5 climate data** to classify global climate zones and compare shifts between the **WMO Climate Standard Reference Period (1961–1990)** and a **Recent Climate Period (2011–2020)**.  
+
 It applies both the **Köppen Climate Classification (KCC)** and the **Trewartha Climate Classification (TCC)** to quantify and visualize climate zone changes.
 
 ---
@@ -23,17 +22,6 @@ The workflow is organized into **five stages**:
 3. **Explore Data** – Summarize, tabulate, and visualize trends  
 4. **Classify Data** – Apply Köppen (KCC) and Trewartha (TCC) climate classifications  
 5. **Compare Periods** – Assess differences between 1961–1990 and 2011–2020  
-
-## Workflow Diagram  
-
-```mermaid
-flowchart LR
-    A[Download Data<br>ERA5 datasets] --> B[Transform Data<br>Monthly & seasonal stats]
-    B --> C[Explore Data<br>Summarize & visualize]
-    C --> D[Classify Data<br>Köppen & Trewartha]
-    D --> E[Compare Periods<br>1961–1990 vs 2011–2020]
-
----
 
 ## Tools  
 
