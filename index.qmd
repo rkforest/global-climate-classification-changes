@@ -1,6 +1,6 @@
 <!-- ---
-title: "Global Climate Classification Change Analysis"
-subtitle: "Recent Period vs Climate Standard Reference Period"
+title: "Global Climate Classification Changes"
+subtitle: "1961–1990 vs 2015–2024"
 author: "Rick Forest"
 description: "A Quarto book that downloads, transforms, explores, and classifies climate data to compare a Recent Period against a Climate Standard Reference Period."
 --- -->
