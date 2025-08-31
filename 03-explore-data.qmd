@@ -1,7 +1,5 @@
 ---
-title: "Step 3: Explore Data"
-author: "Rick Forest"
-date: today
+title: "Explore Data"
 ---
 
 ## Setup
@@ -281,9 +279,25 @@ fn_explore_cv_plot <- function(df, cp) {
 }
 p1t_exp_t_crp <- fn_explore_cv_plot(crp_cn_df,"t")
 p1t_exp_p_crp <- fn_explore_cv_plot(crp_cn_df,"p")
-p1t_exp_t_crp
-p1t_exp_p_crp 
+
 ```
+
+```{r}
+#| label: fig:crp-t-map
+#| fig-cap: "CRP temperature map (1961–1990)."
+p1t_exp_t_crp
+
+```
+
+
+```{r}
+#| label: fig:crp-p-map
+#| fig-cap: "CRP precipitation map (1961–1990)."
+p1t_exp_p_crp
+
+```
+
+
 
 ### Climate variable changes
 
@@ -357,7 +371,19 @@ fn_cv_chg_vis <- function(df1, df2, cp) {
 }
 p1t_exp_t_chg <- fn_cv_chg_vis(crp_cn_df, cpa_cn_df, "t")
 p1t_exp_p_chg <- fn_cv_chg_vis(crp_cn_df, cpa_cn_df, "p")
-p1t_exp_t_chg
-p1t_exp_p_chg 
+
 ```
 
+
+```{r}
+#| label: fig:t-differences-map
+#| fig-cap: "Temperature differences: CPA (2011-2024) vs CRP (1961-1990)."
+p1t_exp_t_chg
+```
+
+
+```{r}
+#| label: fig:p-differences-map
+#| fig-cap: "Precipitation differences: CPA (2011-2024) vs CRP (1961-1990)."
+p1t_exp_p_chg 
+```

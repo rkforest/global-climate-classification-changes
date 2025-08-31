@@ -1,18 +1,40 @@
----
+<!-- ---
 title: "Global Climate Classification Change Analysis"
----
+subtitle: "Recent Period vs Climate Standard Reference Period"
+author: "Rick Forest"
+description: "A Quarto book that downloads, transforms, explores, and classifies climate data to compare a Recent Period against a Climate Standard Reference Period."
+--- -->
 
-This book compiles multiple analyses into a single, navigable report.
+# Introduction {#sec-intro .unnumbered}
 
-```{r}
-#| echo: false
-# any setup code that should run once for all chapters (e.g., loading libraries)
+## Overview
 
+This book presents a multi-stage pipeline for global climate classification change analysis::
 
-**01-data.qmd**
-```markdown
----
-title: "Data"
----
+1. **Download Data** – Collect ERA5 climate datasets.  
+2. **Transform Data** – Preprocess and derive monthly/seasonal stats.  
+3. **Explore Data** – Summarize, tabulate, and visualize trends.  
+4. **Classify Climate** – Apply Köppen–Trewartha classification to compare CRP vs DCN.
 
-Your data sources, preprocessing, and checks here.
+Use the sidebar to navigate, or read in order using the chapter links below.
+
+## Chapters
+
+- [01 — Download Data](01-download-data.qmd)  
+- [02 — Transform Data](02-transform-data.qmd)  
+- [03 — Explore Data](03-explore-data.qmd)  
+- [04 — Classify Climate](04-classify-climate.qmd)
+
+## How to Render
+
+Render the full book:
+```bash
+quarto render
+```
+
+## How to Preview
+
+Live preview (auto-reload in your browser):
+```bash
+quarto preview
+```

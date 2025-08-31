@@ -1,7 +1,5 @@
 ---
-title: "Step 2: Transform Data"
-author: "Rick Forest"
-date: today
+title: "Transform Data"
 ---
 
 ## Setup

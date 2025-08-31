@@ -1,9 +1,5 @@
 ---
-title: "Classification of Global Climates"
-subtitle: "Climate Reference (1961–1990) and Period Average (2011–2020)"
-abstract: "Using Köppen and Trewartha classification systems."
-author: "Rick Forest"
-date: today
+title: "Classify Data"
 execute:
   echo: true
   code-tools: true

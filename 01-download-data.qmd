@@ -1,22 +1,9 @@
 ---
-title: "Global Climate Classification Change Analysis"
-subtitle: "Recent Period vs Climate Standard Reference Period"
-abstract: "Step 1:  Download ERA5 climate data."
-author: Rick Forest
-date: today
-
-execute:
-  freeze: auto               # only re-run chapters that changed freeze: auto 
-  cache: true                # per-chapter caching
+title: "Download Data"
 
 format:
   html:
     toc: true
-
-
-
-
-    
 ---
 
 #### ***Climatological Reference Period Normals***

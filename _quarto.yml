@@ -1,12 +1,14 @@
 project:
   type: book
-  output-dir: _output   # <— all rendered files go here
+  output-dir: _book   
 
 book:
   title: "Global Climate Classification Change Analysis"
   subtitle: "Recent Period vs Climate Standard Reference Period"
   author: "Rick Forest"
-  date: today
+  description: "Climate Classification methods used: Köppen Climate Classification (KCC), Trewartha  Climate Classification (TCC)"
+  abstract: "Download, transform, explore, classify and visualize ERA5 climate data to compare a Recent Climate Period Average (2011-2020) with the WMO Climate Standard Reference Period Normals (1961-1990)"
+  reader-mode: true
   chapters:
     - index.qmd
     - 01-download-data.qmd
