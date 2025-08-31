@@ -1,0 +1,23 @@
+{
+  "01-import.qmd": {
+    "01-import.html": "60911fda"
+  },
+  "01-download-data.qmd": {
+    "01-download-data.html": "b44c248b",
+    "01-download-data.tex": "23552510"
+  },
+  "02-transform-data.qmd": {
+    "02-transform-data.html": "6a13f446",
+    "02-transform-data.tex": "a30d4e61"
+  },
+  "03-explore-data.qmd": {
+    "03-explore-data.html": "8e408738",
+    "03-explore-data.tex": "bd86a0e5"
+  },
+  "04-classify-climate.qmd": {
+    "04-classify-climate.html": "fe39d28c"
+  },
+  "index.qmd": {
+    "index.html": "5108db80"
+  }
+}

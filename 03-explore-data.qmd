@@ -1,0 +1,363 @@
+---
+title: "Step 3: Explore Data"
+author: "Rick Forest"
+date: today
+---
+
+## Setup
+
+### Packages
+
+```{r setup}
+suppressPackageStartupMessages({
+  library(tidyverse)
+  library(sf)
+  library(arrow)
+  library(units)
+  library(gt)
+  library(RColorBrewer)
+  library(viridis)
+  library(scales) # for cut_number
+})
+```
+
+### Climate Periods
+
+```{r climate-periods}
+
+# Climatological Standard Reference Period Normals
+crp_beg <- 1961
+crp_end <- 1990
+crp_lbl <- paste("CRP ", crp_beg, "-", crp_end, sep = "")
+
+# Climatological Period Average
+cpa_beg <- 2011
+cpa_end <- 2020
+cpa_lbl <- paste("CPA ", cpa_beg, "-", cpa_end, sep = "")
+```
+
+### Paths
+
+```{r paths}
+dir_transform <- "_data/2-transform/"
+```
+
+### Read transformed data
+
+```{r read-crp-saved-data}
+
+cp <- "crp"
+
+pth <- paste(dir_transform, cp, "-nc-summary.csv", sep = "")
+crp_nc_summary_df <- read_csv(pth, show_col_types = FALSE) 
+
+pth <- paste(dir_transform, cp, "-monthly-data-t.parquet", sep = "")
+crp_t_df <- read_parquet(pth) 
+pth <- paste(dir_transform, cp, "-monthly-data-p.parquet", sep = "")
+crp_p_df <- read_parquet(pth) 
+pth <- paste(dir_transform, cp, "-average-stats-t.parquet", sep = "")
+crp_t_stats_df <- read_parquet(pth) 
+pth <- paste(dir_transform, cp, "-average-stats-p.parquet", sep = "")
+crp_p_stats_df <- read_parquet(pth) 
+pth <- paste(dir_transform, cp, "-climate-normals.parquet", sep = "")
+crp_cn_df <- read_parquet(pth) 
+
+cp <- "cpa"
+
+pth <- paste(dir_transform, cp, "-nc-summary.csv", sep = "")
+crp_nc_summary_df <- read_csv(pth, show_col_types = FALSE) 
+
+pth <- paste(dir_transform, cp, "-monthly-data-t.parquet", sep = "")
+cpa_t_df <- read_parquet(pth) 
+pth <- paste(dir_transform, cp, "-monthly-data-p.parquet", sep = "")
+cpa_p_df <- read_parquet(pth) 
+pth <- paste(dir_transform, cp, "-average-stats-t.parquet", sep = "")
+cpa_t_stats_df <- read_parquet(pth) 
+pth <- paste(dir_transform, cp, "-average-stats-p.parquet", sep = "")
+cpa_p_stats_df <- read_parquet(pth) 
+pth <- paste(dir_transform, cp, "-climate-normals.parquet", sep = "")
+cpa_cn_df <- read_parquet(pth) 
+
+```
+
+
+## Explore data
+
+```{r summary-table-data}
+
+joined_df <- crp_t_df %>%
+  select(lat, lon, mth, t) %>%
+  rename(t1 = t) %>%
+  inner_join(cpa_t_df %>% select(lat, lon, mth, t) %>% rename(t2 = t),
+             by = c("lat", "lon", "mth")) %>%
+  inner_join(crp_p_df %>% select(lat, lon, mth, p) %>% rename(p1 = p),
+             by = c("lat", "lon", "mth")) %>%
+  inner_join(cpa_p_df %>% select(lat, lon, mth, p) %>% rename(p2 = p),
+             by = c("lat", "lon", "mth"))
+
+fn_create_summary_table_4x <- function (df, title, subtitle, lbl1, lbl2) {
+
+  summary_df <- tibble(
+    Metric = c(
+      "Data points",
+      "Max longitude",
+      "Min longitude",
+      "Max latitude",
+      "Min latitude",
+      "Climate Variable Avg",
+      "Climate Variable Max",
+      "Climate Variable Min"
+    ),
+    CRP_t = c(
+      nrow(df),
+      max(df$lon, na.rm = TRUE),
+      min(df$lon, na.rm = TRUE),
+      max(df$lat, na.rm = TRUE),
+      min(df$lat, na.rm = TRUE),
+      mean(df$t1, na.rm = TRUE),
+      max(df$t1, na.rm = TRUE),
+      min(df$t1, na.rm = TRUE)
+    ),
+    CPA_t = c(
+      nrow(df),
+      max(df$lon, na.rm = TRUE),
+      min(df$lon, na.rm = TRUE),
+      max(df$lat, na.rm = TRUE),
+      min(df$lat, na.rm = TRUE),
+      mean(df$t2, na.rm = TRUE),
+      max(df$t2, na.rm = TRUE),
+      min(df$t2, na.rm = TRUE)
+    ),
+    CRP_p = c(
+      nrow(df),
+      max(df$lon, na.rm = TRUE),
+      min(df$lon, na.rm = TRUE),
+      max(df$lat, na.rm = TRUE),
+      min(df$lat, na.rm = TRUE),
+      mean(df$p1, na.rm = TRUE),
+      max(df$p1, na.rm = TRUE),
+      min(df$p1, na.rm = TRUE)
+    ),
+    CPA_p = c(
+      nrow(df),
+      max(df$lon, na.rm = TRUE),
+      min(df$lon, na.rm = TRUE),
+      max(df$lat, na.rm = TRUE),
+      min(df$lat, na.rm = TRUE),
+      mean(df$p2, na.rm = TRUE),
+      max(df$p2, na.rm = TRUE),
+      min(df$p2, na.rm = TRUE)
+    )
+  )
+ 
+  summary_tbl <- summary_df %>%
+    gt() %>%
+      fmt_number(
+        columns = c(CRP_t, CPA_t, CRP_p , CPA_p),
+        decimals = 0,
+        use_seps = TRUE,
+          rows = Metric == "Total rows"
+      ) %>%
+      fmt_number(
+        columns = c(CRP_t, CPA_t, CRP_p , CPA_p),
+        decimals = 2,
+        rows = Metric %in% c(
+          "Max longitude", "Min longitude",
+          "Max latitude", "Min latitude"
+        )
+      ) %>%
+      fmt_number(
+        columns = c(CRP_t, CPA_t, CRP_p , CPA_p),
+        decimals = 3,
+        rows = Metric %in% c(
+          "Climate Variable Avg",
+          "Climate Variable Max",
+          "Climate Variable Min"
+        )
+      ) %>%
+      tab_spanner(
+        label = "Temperature (°C)",
+        columns = c(CRP_t,CPA_t)
+      ) %>%
+      tab_spanner(
+        label = "Precipitation (mm)",
+        columns = c(CRP_p,CPA_p)
+      ) %>%
+      cols_label(
+        CRP_t = lbl1,
+        CPA_t = lbl2,
+        CRP_p = lbl1,
+        CPA_p = lbl2
+      ) %>%
+      tab_header(
+        title = title
+        # ,
+        # subtitle = subtitle
+      ) %>%
+      tab_style(
+        style = list(
+          cell_fill(color = "lightyellow")
+        ),
+        locations = cells_body(
+          rows = Metric %in% c(
+            "Climate Variable Avg"
+          )
+        )
+      )
+
+  return(summary_tbl)
+}
+
+title <- "Summary of Input Climate Variables"
+lbl1 <- crp_lbl
+lbl2 <- cpa_lbl
+tbl1_gt <- fn_create_summary_table_4x(joined_df, title, subtitle, lbl1, lbl2)
+tbl1_gt
+
+```
+
+## Exploratory Plots
+
+```{r read-coastline}
+dir <- dir_transform
+fil <- "global-coastline.gpkg"
+pth <- paste(dir, fil, sep = "")
+coastline_sf <- st_read(pth, quiet=TRUE)
+
+```
+
+### Climate Variable
+
+```{r expl-cv-plot}
+
+fn_explore_cv_plot <- function(df, cp) {
+  if (cp == "t") {
+    cv_df <- df |> 
+       select(lon, lat, tavg) |> 
+       rename(cv = tavg)
+    cv_title <- paste("Average Temperature ", crp_lbl)
+    all_colors <- rev(brewer.pal(11, "RdBu"))
+    cv_colors <- all_colors[c(4, 5, 7, 8, 9)]    
+    cv_units <- "°C"
+  } else {
+    cv_df <- df |> 
+       select(lon, lat, ptot) |> 
+       rename(cv = ptot)  
+    cv_title <- paste("Average Precipitation ", crp_lbl)
+    cv_colors <- brewer.pal(5, "Blues") 
+    cv_units <- "mm"
+  }
+  qs <- quantile(cv_df$cv, probs = seq(0, 1, length.out = 6), na.rm = TRUE)  
+  labs <- sprintf("[%.1f, %.1f]", qs[-6], qs[-1]) 
+  cv_df <- cv_df %>%
+    mutate(p_bin = cut(cv, breaks = qs, include.lowest = TRUE, labels = labs))
+
+  cv_plt <- ggplot(cv_df, aes(lon, lat, fill = p_bin)) +
+    geom_raster(alpha = 0.85) +
+    geom_sf(data = coastline_sf,
+      color = "black", linewidth = 0.15,
+      inherit.aes= FALSE, show.legend = FALSE) +
+    scale_fill_manual(
+      values = cv_colors,
+      name = cv_units, 
+      guide = guide_legend(
+        reverse = TRUE,       # high value bin at top
+        override.aes = list(
+          alpha = 0.85,        # legend bins semi-transparent
+          colour = "black",   # legend bins outline
+          size = 0.4          # legend bins outline line width
+        )   
+      )   
+    ) +
+    coord_sf(expand=FALSE) +
+    labs(
+      title = cv_title,
+      x = "",
+      y = "") +
+    theme_minimal() +
+    # make legend bins boxes
+    theme(legend.key = element_rect(colour = "black", fill = NA)) 
+ return (cv_plt)
+}
+p1t_exp_t_crp <- fn_explore_cv_plot(crp_cn_df,"t")
+p1t_exp_p_crp <- fn_explore_cv_plot(crp_cn_df,"p")
+p1t_exp_t_crp
+p1t_exp_p_crp 
+```
+
+### Climate variable changes
+
+```{r expl-cv-plot-chg}
+
+fn_cv_chg_vis <- function(df1, df2, cp) {
+  if (cp == "t") {
+    cv_df1 <- df1 |> select(lon, lat, tavg) |> rename(cv = tavg)
+    cv_df2 <- df2 |> select(lon, lat, tavg) |> rename(cv = tavg)
+    cv_title <- paste("Temperature Changes ", cpa_lbl, " vs ", crp_lbl)
+    all_colors <- rev(brewer.pal(11, "RdBu"))
+    cv_colors <- all_colors[c(4, 5, 7, 8, 9)]  
+    cv_units <- "°C"
+  } else {
+    cv_df1 <- df1 |> select(lon, lat, ptot) |> rename(cv = ptot)
+    cv_df2 <- df2 |> select(lon, lat, ptot) |> rename(cv = ptot)
+    cv_title <- paste("Precipitation Changes", cpa_lbl, " vs ", crp_lbl)
+    all_colors <- brewer.pal(11, "PRGn")
+    cv_colors <- all_colors[3:7]
+    cv_units <- "mm"
+  }
+  join_df <- cv_df1 |>
+    select(lat, lon, cv) |>
+    rename(cv1 = cv) |>
+    inner_join(cv_df2  |> 
+    select(lat, lon, cv)  |> 
+    rename(cv2 = cv), by = c("lat", "lon")) |> 
+    mutate(cvdiff = cv2 - cv1) |> 
+    select(lon, lat, cvdiff)
+  qs <- quantile(join_df$cvdiff, 
+                probs = seq(0, 1, length.out = 6),
+                na.rm = TRUE)
+  labs <- sprintf("[%.1f, %.1f]", qs[-length(qs)], qs[-1])
+  plot_df <- join_df |>
+    mutate(
+      p_bin = cut(
+        cvdiff,
+        breaks = qs,
+        include.lowest = TRUE,
+        right = TRUE,
+        labels = labs
+      )
+    )  
+    
+  cv_plt <- ggplot(plot_df, aes(x = lon, y = lat, fill = p_bin)) +
+    geom_raster(alpha = 0.85) +
+    geom_sf(data = coastline_sf,
+      color = "black", linewidth = 0.15,
+      inherit.aes= FALSE, show.legend = FALSE) +
+    scale_fill_manual(
+      values = cv_colors,
+      name = cv_units, 
+      na.translate = FALSE,
+      guide = guide_legend(
+        reverse = TRUE,       # high value bin at top
+        override.aes = list(
+          alpha = 0.85,        # legend bins semi-transparent
+          colour = "black",   # legend bins outline
+          size = 0.4          # legend bins outline line width
+        )   
+      )   
+    ) +
+    coord_sf(expand=FALSE) +
+    labs(
+      title = cv_title,
+      x = "",
+      y = "") +
+    theme_minimal() +
+    # make legend bins boxes
+    theme(legend.key = element_rect(colour = "black", fill = NA)) 
+}
+p1t_exp_t_chg <- fn_cv_chg_vis(crp_cn_df, cpa_cn_df, "t")
+p1t_exp_p_chg <- fn_cv_chg_vis(crp_cn_df, cpa_cn_df, "p")
+p1t_exp_t_chg
+p1t_exp_p_chg 
+```
+

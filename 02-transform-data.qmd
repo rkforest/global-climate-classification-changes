@@ -1,0 +1,466 @@
+---
+title: "Step 2: Transform Data"
+author: "Rick Forest"
+date: today
+---
+
+## Setup
+
+### Packages
+
+```{r setup}
+suppressPackageStartupMessages({
+  library(tidyverse)
+  library(tidync)
+  library(data.table)
+  library(sf)
+  library(arrow)
+  library(units)
+
+})
+```
+
+### Climate Periods
+
+```{r climate-periods}
+
+# Climatological Standard Reference Period Normals
+crp_beg <- 1961
+crp_end <- 1990
+crp_lbl <- paste("CRP ", crp_beg, "-", crp_end, sep = "")
+
+# Climatological Period Average
+cpa_beg <- 2011
+cpa_end <- 2020
+cpa_lbl <- paste("CPA ", cpa_beg, "-", cpa_end, sep = "")
+```
+
+### Paths
+
+```{r paths}
+dir_download <- "_data/1-download/"
+dir_transform <- "_data/2-transform/"
+```
+
+## Transform data
+
+### Transform land sea mask
+
+```{r transform-land-sea-mask}
+
+fn_transform_land_sea_mask <- function(dir_download) {
+
+  fil <- "land-sea-mask.nc"
+  pth <- paste(dir_download, fil, sep = "")
+  nc <- tidync(pth)
+
+  df <- nc |>
+    hyper_tibble() |>
+    as_tibble() |> # tidyverse data frame
+    rename(lon = longitude, lat = latitude) |>
+    mutate(
+      lon = as.numeric(lon),
+      lat = as.numeric(lat),
+      lsm = as.integer(round(lsm))
+    ) |>
+    select(lon, lat, lsm) |> # drop all other columns
+    arrange(lon, lat)
+  return(df)
+}
+
+dir <- dir_transform
+fil <- "land-sea-mask.parquet"
+pth <- paste(dir, fil, sep = "")
+
+if (!file.exists(pth))  {
+  land_sea_mask_df <- fn_transform_land_sea_mask(dir_download)
+  write_parquet(land_sea_mask_df, pth)
+} else {
+  land_sea_mask_df <- read_parquet(pth)
+}
+
+```
+
+### Transform global coastline
+
+```{r transform-global-coastline}
+
+fn_transform_global_coastline <- function(dir_download) {
+  # Create a single coastline multiline, making sure geometries are valid
+  # (eliminates extra horizontal line on map)
+
+  fil <- "global-coastline.gpkg"
+  pth <- paste(dir_download, fil, sep = "")
+  coastline_sf <- st_read(pth, quiet = TRUE)
+
+  coastline_sf <- coastline_sf |>
+    select(geom) |>
+    mutate(id = "world") |>
+    group_by(id) |>
+    st_make_valid() |>
+    summarise()
+  return(coastline_sf)
+}
+
+dir <- dir_transform
+fil <- "global-coastline.gpkg"
+pth <- paste(dir, fil, sep = "")
+
+if (!file.exists(pth))  {
+  coastline_sf <- fn_transform_global_coastline(dir_download)
+  st_write(coastline_sf, pth, delete_dsn = TRUE, quiet = TRUE)
+} else {
+  coastline_sf <- st_read(pth, quiet=TRUE)
+}
+
+```
+
+### Read NetCDF climate data
+
+```{r read-nc-chunk}
+
+fn_read_nc_chunk <- function(dt, var, vnm, start, stop, ncs_df) {
+
+  setnames(dt, old = "longitude", new = "lon")
+  setnames(dt, old = "latitude", new = "lat")
+  setnames(dt, old = vnm, new = var)
+
+  dt[, lon := as.numeric(lon)]
+  dt[, lat := as.numeric(lat)]
+  dt[lon > 180, lon := lon - 360]
+
+  dt[, mth := as.integer(substr(valid_time, 6, 7))]
+  setDT(dt)
+
+  # add row before grouping
+  cv <- vnm
+  if (var == "t") {
+    avgcv <- round(mean(dt$t) - 273.15, 3)
+    maxcv <- round(max(dt$t) - 273.15, 3)
+    mincv <- round(min(dt$t) - 273.15, 3)
+    maxdate <- max(dt$valid_time)
+    mindate <- min(dt$valid_time)
+  } else {
+    avgcv <- round(mean(dt$p) * 1000, 3)
+    maxcv <- round(max(dt$p) * 1000, 3)
+    mincv <- round(min(dt$p) * 1000, 3)
+    maxdate <- substr(max(dt$valid_time), 1, 10)
+    mindate <- substr(min(dt$valid_time), 1, 10)
+  }
+  maxlon <- max(dt$lon)
+  minlon <- min(dt$lon)
+  maxlat <- max(dt$lat)
+  minlat <- min(dt$lat)
+  datapts <- nrow(dt)
+
+  new_row <- list(
+    cv = cv,
+    avgcv   = avgcv,
+    maxcv   = maxcv,
+    mincv   = mincv,
+    maxdate = maxdate,
+    mindate = mindate,
+    maxlon  = maxlon,
+    minlon  = minlon,
+    maxlat  = maxlat,
+    minlat  = minlat,
+    datapts = datapts
+  )
+
+  ncs_df <- rbind(ncs_df, new_row)
+
+  if (var == "t") {
+    drop <- setdiff(names(dt), c("lon", "lat", "mth", "t"))
+    dt[, (drop) := NULL]
+    dt <- dt[, .(t = sum(t, na.rm = TRUE)), by = .(lon, lat, mth)]
+  } else {
+    drop <- setdiff(names(dt), c("lon", "lat", "mth", "p"))
+    dt[, (drop) := NULL]
+    dt <- dt[, .(p = sum(p, na.rm = TRUE)), by = .(lon, lat, mth)]
+  }
+  setDT(dt)
+  gc()
+
+  return(list(dt, ncs_df))
+}
+
+```
+
+```{r read-nc}
+fn_read_nc <- function(pth, var, vnm, ncs_df) {
+  nc <- tidync(pth)
+
+  dims <- nc |> activate(vnm) |> hyper_dims()
+  ntime <- dims |> filter(name == "valid_time") |> pull(length)
+  chunk <- 60L
+
+  print(paste("chunk size ", chunk))
+
+  for (start in seq(1L, ntime, by = chunk)) {
+    chnk_beg <- Sys.time()
+    stop <- min(start + chunk - 1L, ntime)
+
+    chunk_dt <- nc |>
+      hyper_filter(valid_time = index %in% start:stop) |>
+      hyper_tibble(select_var = vnm) |>
+      as.data.table()
+
+
+    result <- fn_read_nc_chunk(chunk_dt, var, vnm, start, stop, ncs_df)
+    chunk_grp_dt <- result[[1]]
+    ncs_df <- result[[2]]
+
+    if (start == 1L) {
+      dt <- chunk_grp_dt
+    } else {
+      dt <- rbindlist(list(dt, chunk_grp_dt))
+      # group
+      if (var == "t") {
+        dt <- dt[, .(t = sum(t, na.rm = TRUE)), by = .(lon, lat, mth)]
+      } else {
+        dt <- dt[, .(p = sum(p, na.rm = TRUE)), by = .(lon, lat, mth)]
+      }
+    }
+    chnk_end <- Sys.time()
+    print(paste("chunk time: ", (chnk_end - chnk_beg)))
+  }
+
+  return(list(dt, ncs_df))
+}
+
+```
+
+```{r get-t-data}
+
+fn_get_t_data <- function(dir, cp, ncs_df) {
+
+  cv <- "t"
+  vnm <- "t2m"
+  fil <- paste(cp, "-era5-", cv, ".nc", sep = "")
+  pth <- paste(dir, fil, sep = "")
+  result <- fn_read_nc(pth, cv, vnm, ncs_df)
+  t_dt <- result[[1]]
+  ncs_df <- result[[2]]
+
+  setorder(t_dt, lon, lat, mth)
+  setDT(t_dt)
+
+  # convert from sum to avg
+  yrs <- ifelse(cp == "crp", 30, 10)
+  t_dt[, t := t / yrs]
+
+  # convert from kelvin to celsius
+  t_dt[, t := t - 273.15]
+
+  return(list(t_dt, ncs_df))
+}
+```
+
+```{r get-p-data}
+
+fn_get_p_data <- function(dir, cp, ncs_df) {
+
+  ndy <- data.table(
+    mth = 1:12,
+    ndays = as.integer(c(31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31))
+  )
+
+  cv <- "p"
+  vnm <- "tp"
+  fil <- paste(cp, "-era5-", cv, ".nc", sep = "")
+  pth <- paste(dir, fil, sep = "")
+  result <- fn_read_nc(pth, cv, vnm, ncs_df)
+  p_dt <- result[[1]]
+  ncs_df <- result[[2]]
+
+  setorder(p_dt, lon, lat, mth)
+  setDT(p_dt)
+
+  # convert from sum to avg
+  yrs <- ifelse(cp == "crp", 30, 10)
+  p_dt[, p := p / yrs]
+
+  # add number of days using lookup table
+  p_dt[ndy, ndy := i.ndays, on = "mth"]
+  p_dt[, p := p * ndy * 1000]
+  p_dt[, ndy := NULL]
+
+  return(list(p_dt, ncs_df))
+
+}
+```
+
+### Transform NetCDF climate data
+
+```{r transform-t-data, cp}
+
+fn_transform_t_data <- function(t_dt) {
+
+  # pivot and calculate stats
+
+  t_wide_dt <- t_dt |>
+    pivot_wider(
+      names_from = c(mth),
+      values_from = c("t"),
+      names_prefix = "t",
+      names_sep = "" # no underscore in new col names
+    )
+
+  tcols <- paste0("t", 1:12)
+  t_stats_dt <- t_wide_dt |>
+    mutate(
+      tavg = (t1 + t2 + t3 + t4 + t5 + t6 + t7 + t8 + t9 + t10 + t11 + t12) /
+        12,
+      tmax = pmax(t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12),
+      tmin = pmin(t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12),
+      totm = (t1 + t2 + t3 + t10 + t11 + t12) / 6,
+      tats = (t4 + t5 + t6 + t7 + t8 + t9) / 6,
+      tg10 = rowSums(across(all_of(tcols), ~ .x >= 10))
+    )
+  t_stats_df <- t_stats_dt |>
+    select(-t1, -t2, -t3, -t4, -t5, -t6, -t7, -t8, -t9, -t10, -t11, -t12)
+
+  return(t_stats_df)
+}
+
+```
+
+```{r transform-p-data}
+
+fn_transform_p_data <- function(p_dt) {
+
+  # pivot and calculate stats
+
+  p_wide_dt <- p_dt |>
+    pivot_wider(
+      names_from = c(mth),
+      values_from = c("p"),
+      names_prefix = "p",
+      names_sep = "" # no underscore in new col names
+    )
+  
+  pcols <- paste0("p", 1:12)
+  p_stats_dt <- p_wide_dt |>
+    mutate(
+      ptot = (p1 + p2 + p3 + p4 + p5 + p6 + p7 + p8 + p9 + p10 + p11 + p12),
+      pmax = pmax(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12),
+      pmin = pmin(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12),
+      pavg = ptot / 12,
+      potm = (p1 + p2 + p3 + p10 + p11 + p12),
+      pats = (p4 + p5 + p6 + p7 + p8 + p9),
+      pmno = pmin(p10, p11, p12, p1, p2, p3),
+      pmxo = pmax(p10, p11, p12, p1, p2, p3),
+      pmna = pmin(p4, p5, p6, p7, p8, p9),
+      pmxa = pmax(p4, p5, p6, p7, p8, p9),
+      pl60 = rowSums(across(all_of(pcols), ~ .x < 60))
+    )
+  p_stats_df <- p_stats_dt |>
+    select(-p1, -p2, -p3, -p4, -p5, -p6, -p7, -p8, -p9, -p10, -p11, -p12)
+
+  return(p_stats_df)
+
+}
+
+```
+
+### Calculate grid cell area
+
+```{r calc-grid-area}
+
+fn_calc_area <- function(df) {
+  earth_radius_km <- 6371
+  lat_grid_degrees <- 0.25
+  lon_grid_degrees <- 0.25
+  area_df <- df |>
+    mutate(
+      lat_radians = lat * pi / 180,
+      lat_grid_radians = lat_grid_degrees * pi / 180,
+      lon_grid_radians = lon_grid_degrees * pi / 180,
+      # cell area in km^2
+      area = (earth_radius_km^2 *
+        lon_grid_radians *
+        (sin(lat_radians + lat_grid_radians / 2) -
+          sin(lat_radians - lat_grid_radians / 2))) /
+        1e6
+    ) |>
+    select(-lat_radians, -lat_grid_radians, -lon_grid_radians) |>
+    select(lat, lon, area, lsm, everything())
+  return(area_df)
+
+}
+```
+
+### Save transformed climate data
+
+```{r save-climate-data}
+
+fn_create_ncs_df <- function() {
+  ncs_df <- data.frame(
+    cv      = character(),
+    avgcv   = numeric(),
+    maxcv   = numeric(),
+    mincv   = numeric(),
+    maxdate = character(),
+    mindate = character(),
+    maxlon  = numeric(),
+    minlon  = numeric(),
+    maxlat  = numeric(),
+    minlat  = numeric(),
+    datapts = numeric()
+  )
+  return(ncs_df)
+}
+
+fn_save_climate_data <- function (dir_read, dir_save, cp, ncs_df) {
+ 
+  result <- fn_get_t_data(dir_read, cp, ncs_df)
+  t_dt <- result[[1]]
+  ncs_df <- result[[2]]
+  pth <- paste(dir_save, cp, "-monthly-data-t.parquet", sep = "")
+  write_parquet(t_dt, pth)
+
+  result <- fn_get_p_data(dir_read, cp, ncs_df)
+  p_dt <- result[[1]]
+  ncs_df <- result[[2]]
+  pth <- paste(dir_save, cp, "-monthly-data-p.parquet", sep = "")
+  write_parquet(p_dt, pth)
+
+  pth <- paste(dir_save, cp, "-nc-summary.csv", sep = "")
+  write_csv(ncs_df, pth)
+
+  t_stats_df <- fn_transform_t_data(t_dt)
+  pth <- paste(dir_save, cp, "-average-stats-t.parquet", sep = "")
+  write_parquet(t_stats_df, pth)
+
+  p_stats_df <- fn_transform_p_data(p_dt)
+  pth <- paste(dir_save, cp, "-average-stats-p.parquet", sep = "")
+  write_parquet(p_stats_df, pth)
+
+  j1_df <- inner_join(t_stats_df, p_stats_df, by = c("lon", "lat"))
+  j2_df <- inner_join(j1_df, land_sea_mask_df, by = c("lon", "lat"))
+  cn_df <- fn_calc_area(j2_df)
+  pth <- paste(dir_save, cp, "-climate-normals.parquet", sep = "")
+  write_parquet(cn_df, pth)
+
+}
+
+dir_read <- dir_download
+dir_save <- dir_transform
+
+cp <- "cpa"
+pth <- paste(dir_save, cp, "-climate-normals.parquet", sep = "")
+# only need to read, transform, and save if file doesn't exist
+if (!file.exists(pth)) {
+  ncs_df <- fn_create_ncs_df()
+  fn_save_climate_data(dir_read, dir_save, cp, ncs_df) 
+}
+
+cp <- "crp"
+pth <- paste(dir_save, cp, "-climate-normals.parquet", sep = "")
+# only need to read, transform, and save if file doesn't exist
+if (!file.exists(pth)) {
+  ncs_df <- fn_create_ncs_df()
+  fn_save_climate_data(dir_read, dir_save, cp, ncs_df)  
+}
+
+```

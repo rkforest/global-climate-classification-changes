@@ -1,0 +1,18 @@
+---
+title: "Global Climate Classification Change Analysis"
+---
+
+This book compiles multiple analyses into a single, navigable report.
+
+```{r}
+#| echo: false
+# any setup code that should run once for all chapters (e.g., loading libraries)
+
+
+**01-data.qmd**
+```markdown
+---
+title: "Data"
+---
+
+Your data sources, preprocessing, and checks here.

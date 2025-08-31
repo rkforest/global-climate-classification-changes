@@ -1,0 +1,185 @@
+---
+title: "Global Climate Classification Change Analysis"
+subtitle: "Recent Period vs Climate Standard Reference Period"
+abstract: "Step 1:  Download ERA5 climate data."
+author: Rick Forest
+date: today
+
+execute:
+  freeze: auto               # only re-run chapters that changed freeze: auto 
+  cache: true                # per-chapter caching
+
+format:
+  html:
+    toc: true
+
+
+
+
+    
+---
+
+#### ***Climatological Reference Period Normals***
+
+Average climate computed for a consecutive 30 year period defined by the World Meteorological Organization (WMO)
+  <https://community.wmo.int/en/activity-areas/climate-services/climate-products-and-initiatives/wmo-climatological-normals>
+
+```{r climatological-reference-period}
+crp_beg <- 1961
+crp_end <- 1990
+crp_lbl <- paste("CRP ", crp_beg, "-", crp_end, sep = "")
+```
+
+#### ***Climate Period Average ***
+
+Average climate computed for a period of at least ten years starting on 1 January of a year ending with the digit 1
+
+```{r climate-period-average}
+cpa_beg <- 2011
+cpa_end <- 2020
+cpa_lbl <- paste("CPA ", cpa_beg, "-", cpa_end, sep = "")
+```
+
+#### Packages
+
+```{r setup-packages}
+suppressPackageStartupMessages({
+  library(ecmwfr)
+  library(rnaturalearth)
+  library(sf)
+  library(dplyr)
+  library(gt)
+})
+```
+
+#### Paths
+
+```{r setup-paths}
+dir_download <- "_data/1-download/"
+```
+
+#### Download ERA5 climate data
+
+```{r fn-ERA5-data-request}
+
+fn_download_ERA5_data_file <- function(pth, cv, beg, end) {
+  yrs <- beg:end
+  mths <- 1:12
+  if (cv == "t") {
+    variable_name <- "2m_temperature"
+  } else if (cv == "p") {
+    variable_name <- "total_precipitation"
+  }
+  request <- list(
+    product_type = "monthly_averaged_reanalysis",
+    dataset_short_name = "reanalysis-era5-single-levels-monthly-means",
+    variable = variable_name,
+    year = yrs,
+    month = mths,
+    time = c("00:00"),
+    format = "netcdf",
+    download_format = "unarchived",
+    target = pth
+  )
+  # Climate Data Store key
+  options(keyring_backend = "file") # for ecmwfr to use file instead of mac keychain
+  wf_get_key() # keyring password required 
+  file <- wf_request(request = request, transfer = TRUE, path = ".")
+}
+```
+
+```{r fn-download-climate-period-data}
+
+fn_download_cv_data <- function(dir, cp, cv, beg, end) {
+  fil <- paste("era5-", cp, "-", beg, "-", end , "-", cv, ".nc", sep = "")
+  pth <- paste(dir, fil, sep = "")
+  if (!file.exists(pth)) {
+    fn_download_ERA5_data_file(pth, cv, beg, end) 
+  }
+}
+```
+
+```{r download-ERA5-climate-data}
+
+dir <- dir_download
+
+cp <- "crp"
+cv <- "t"
+fn_download_cv_data(dir, cp, cv, crp_beg, crp_end)
+cv <- "p"
+fn_download_cv_data(dir, cp, cv, crp_beg, crp_end)
+
+cp <- "cpa"
+cv <- "t"
+fn_download_cv_data(dir, cp, cv, cpa_beg, cpa_end)
+cv <- "p"
+fn_download_cv_data(dir, cp, cv, cpa_beg, cpa_end)
+```
+
+#### Download ERA5 land-sea mask
+
+```{r download-land-sea-mask} 
+dir <- dir_download
+fil <- "era5-land-sea-mask.nc"
+pth <- paste(dir, fil, sep = "")
+if (!file.exists(pth))  {
+  request <- list(
+    product_type = "reanalysis",
+    dataset_short_name = "reanalysis-era5-single-levels",
+    variable = "land_sea_mask",
+    year = "2000", # any date works; the mask is invariant
+    month = "01",
+    day = "01",
+    time = "00:00",
+    area = "90/-179.75/-90/180", # N/W/S/E (global)
+    grid = "0.25/0.25", # ERA5 native grid spacing
+    format = "netcdf",
+    download_format = "unarchived",
+    target = pth
+  )
+  # Climate Data Store key
+  options(keyring_backend = "file") # for ecmwfr to use file instead of mac keychain
+  wf_get_key() # keyring password required 
+  file <- wf_request(request = request, transfer = TRUE, path = ".")
+}
+```
+
+#### Download natural earth coastline
+
+```{r download-ne-coastline}
+dir <- dir_download
+fil <- "ne_coastline.gpkg"
+pth <- paste(dir, fil, sep = "")
+if (!file.exists(pth))  {
+  ne_coastline_sf <-
+    ne_download(
+      scale = 10,
+      type = "coastline",
+      category = "physical",
+      returnclass = "sf"
+    )
+  st_write(ne_coastline_sf, pth, delete_dsn = TRUE, quiet = TRUE)
+}
+```
+
+#### List of files downloaded
+
+```{r}
+dir_path <- dir_download  # change to your directory
+
+files_df <- list.files(dir_path, full.names = TRUE) |>
+  file.info() |>
+  as.data.frame() |>
+  tibble::rownames_to_column("path") |>
+  transmute(
+    filename = format(basename(path), justify = "left"),
+    filesize_MB  = round(size / (1024^2), 2),   # bytes → MB, rounded
+    modified_date = as.Date(mtime)
+  )
+
+files_df |>
+  gt() |>
+  cols_align(align = "left", columns = filename) |>
+  cols_align(align = "right", columns = filesize_MB) |>
+  cols_align(align = "center", columns = modified_date)
+```
