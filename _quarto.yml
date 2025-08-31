@@ -1,6 +1,6 @@
 project:
   type: book
-  output-dir: _book   
+  output-dir: _output
 
 book:
   title: "Global Climate Classification Change Analysis"
@@ -15,10 +15,11 @@ book:
     - 02-transform-data.qmd
     - 03-explore-data.qmd
     - 04-classify-climate.qmd
+    - 05-compare-periods.qmd
 
 execute:
   freeze: auto
-  cache: true
+  cache: false
   warning: false
   message: false
 

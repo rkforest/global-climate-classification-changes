@@ -40,6 +40,11 @@ cpa_lbl <- paste("CPA ", cpa_beg, "-", cpa_end, sep = "")
 dir_transform <- "_data/2-transform/"
 ```
 
+```{r figures-output}
+# Centralize figures created by chunks in this doc
+knitr::opts_chunk$set(fig.path = "_figures/explore-")
+```
+
 ### Read transformed data
 
 ```{r read-crp-saved-data}

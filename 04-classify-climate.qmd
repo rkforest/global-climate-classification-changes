@@ -53,6 +53,11 @@ dir_transform <- "_data/2-transform/"
 dir_classify <- "_data/classify/"
 ```
 
+```{r figures-output}
+# Centralize figures created by chunks in this doc
+knitr::opts_chunk$set(fig.path = "_figures/classify-")
+```
+
 ### Dictionaries
 
 ```{r ktc-dictionary}
