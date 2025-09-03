@@ -22,5 +22,32 @@
   },
   "05-compare-periods.qmd": {
     "05-compare-periods.html": "9abb4e18"
+  },
+  "04-classify-koppen.qmd": {
+    "04-classify-koppen.html": "41ffc6c0"
+  },
+  "05-classify-trewartha.qmd": {
+    "05-classify-trewartha.html": "081277a3"
+  },
+  "06-compare-periods.qmd": {
+    "06-compare-periods.html": "563758b2"
+  },
+  "01-download-data-py.qmd": {
+    "01-download-data-py.html": "5cb7740d"
+  },
+  "01_download_era5_data.qmd": {
+    "01_download_era5_data.html": "f2187507"
+  },
+  "02_calculate_climate_normals.qmd": {
+    "02_calculate_climate_normals.html": "b86bb5db"
+  },
+  "02_compute_climate_normals.qmd": {
+    "02_compute_climate_normals.html": "944e6db2"
+  },
+  "03_reshape_climate_normals.qmd": {
+    "03_reshape_climate_normals.html": "5f0a6907"
+  },
+  "04_derive_classification_metrics.qmd": {
+    "04_derive_classification_metrics.html": "c2620b9d"
   }
 }

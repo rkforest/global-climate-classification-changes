@@ -1,0 +1,127 @@
+---
+title: "Compute Climate Normals"
+engine: jupyter      
+jupyter: myproj  
+---
+
+Aggregate temperature and precipitation data for each climate period by longitude, latitude and month number producing a single value per grid cell and month number.
+
+### ***Climatological Reference Period***
+```{python}
+#| label: crp
+crp_beg = 1961
+crp_end = 1990
+```
+
+### ***Recent Climate Period***
+```{python}
+#| label: rcp
+rcp_beg = 2011
+rcp_end = 2020
+```
+
+### ***Packages***
+```{python}
+#| label: packages
+import xarray as xr
+import pandas as pd
+import numpy as np
+import os
+from pathlib import Path
+from datetime import datetime
+```
+
+### ***Directories***
+```{python}
+#| label: paths
+dir_rd = "_data/01-era5-download/"
+dir_wr = "_data/02-climate-normals/"
+```
+
+### ***Functions***
+
+```{python }
+#| label: functions
+def fn_climate_normals(
+    dir_rd: str,
+    dir_wr: str,
+    cp: str,
+    cv: str,
+    vnm: str):
+
+    fil = cp + "_" + cv + "_monthly.nc"
+    pth = Path(dir_rd) / fil
+    ds0 = xr.open_dataset(
+        pth,
+        engine="h5netcdf",
+        chunks="auto", 
+        decode_cf=True
+    )
+
+    # Select deterministic member if an ensemble dim exists
+    if "number" in ds0.dims:
+        # If 0 exists, pick it; else pick the first available
+        sel_val = 0 if 0 in ds0["number"].values else ds0["number"].values[0]
+        ds0 = ds0.sel(number=sel_val)
+
+    # If the coordinate is named valid_time, rename it to time
+    if "valid_time" in ds0.coords and "time" not in ds0.coords:
+        ds0 = ds0.rename({"valid_time": "time"})
+            
+    # add month coordinate
+    if "month" not in ds0.coords:
+        ds0 = ds0.assign_coords(mth=ds0["time"].dt.month)
+
+    # --- build climatology ---
+    clim_mon = ds0[vnm].groupby("mth").mean("time", keep_attrs=True)
+
+    # --- convert to a tidy DataFrame ---
+    # This will create columns: [lon, lat, mth, var1, var2, ...]
+    df = clim_mon.to_dataframe().reset_index()
+
+    # optional: rename coords for consistency
+    df = df.rename(columns={"longitude": "lon", "latitude": "lat"})
+
+    # drop unused ensemble number
+    df_new = df.drop(columns=["number"])
+
+    # downcast columns to reduce size
+    df_new = df_new.astype({"lon": "float32", "lat": "float32"})
+    df_new = df_new.astype({"mth": "int8"})
+    #df_new ["small_ints"] = pd.to_numeric(df["small_ints"], downcast="integer")
+
+    # --- save as parquet ---
+    fil = cp + "_" + cv + "_normals.parquet"
+    pth = Path(dir_wr) / fil
+    df_new.to_parquet(pth, index=False)
+
+```
+
+### ***Calculate Climate Normals***
+
+```{python}
+#| label: main
+start = datetime.now()
+fn_climate_normals(dir_rd, dir_wr, "crp", "t", "t2m")
+fn_climate_normals(dir_rd, dir_wr, "crp", "p", "tp")
+fn_climate_normals(dir_rd, dir_wr, "rcp", "t", "t2m")
+fn_climate_normals(dir_rd, dir_wr, "rcp", "p", "tp")
+end = datetime.now()
+print("elapsed time: " + str(end - start))
+```
+
+### ***Check results***
+
+```{python}
+#| label: check
+cp = "crp"
+cv = "t"
+fil = cp + "_" + cv + "_normals.parquet"
+pth = Path(dir_wr) / fil
+df = pd.read_parquet(pth)
+df.info()
+df
+
+mth_counts = df['mth'].value_counts()
+mth_counts
+```

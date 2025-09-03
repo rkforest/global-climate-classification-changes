@@ -15,19 +15,34 @@ It applies both the **Köppen Climate Classification (KCC)** and the **Trewartha
 
 ## Workflow  
 
-The workflow is organized into **five stages**:  
+This project uses a multi-stage pipeline::
 
-1. **Download Data** – Retrieve ERA5 climate datasets  
-2. **Transform Data** – Preprocess and compute monthly & seasonal statistics  
-3. **Explore Data** – Summarize, tabulate, and visualize trends  
-4. **Classify Data** – Apply Köppen (KCC) and Trewartha (TCC) climate classifications  
-5. **Compare Periods** – Assess differences between 1961–1990 and 2011–2020  
+1. **Download Data** – 
+  + Download ERA5 climate data -
+    + temperature and precipitation for each period, the the land sea mask
+2. **Aggregate Data** – 
+  + Aggregate downloaded data for each climate period by lon, lat, and month
+3. **Pivot Data** - 
+  + Pivot aggregated data:
+    + from long form (one row per lon, lat, and month) 
+    + to wide form (one row per lon and lat, with 12 monthly columns)
+4. **Transform Data** – 
+  + Add annual and seasonal statistics for each period, each grid cell
+5. **Explore Data** – 
+  + Summarize and view data prior to classifying into climate zones
+6. **Classify Koppen** –   
+  + Apply the Koppen classification formulas to each grid cell 
+7. **Classify Trewartha** –   
+  + Apply the Trewartha classification formulas to each grid cell 
+8. **Analyze Changes** – 
+  + analyzes differences between 1961–1990 and 2011–2020  
 
 ---
 
 ## Tools  
 
-- **R** – Data processing, analysis, and visualization  
+- **Python** – Downloading and import  
+- **R** – Analysis and visualization  
 - **Positron IDE** – Development environment  
 - **Quarto** – Reproducible reporting and publishing  
 

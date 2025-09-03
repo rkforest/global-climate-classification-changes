@@ -1,0 +1,117 @@
+---
+title: "Download ERA5 Data"
+engine: jupyter       # <-- important
+jupyter: myproj      # or the exact kernel name you want
+---
+
+#### ***Climatological Reference Period***
+
+Average climate computed for a consecutive 30 year period defined by the World Meteorological Organization (WMO)
+  <https://community.wmo.int/en/activity-areas/climate-services/climate-products-and-initiatives/wmo-climatological-normals>
+
+```{python climatological-reference-period}
+crp_beg = 1961
+crp_end = 1990
+crp_lbl = "CRP-" + str(crp_beg) + "-" + str(crp_end)
+```
+
+#### ***Recent Climate Period***
+
+Average climate computed for a period of at least ten years starting on 1 January of a year ending with the digit 1 (WMO definition)
+
+```{python recent-climate-period}
+rcp_beg = 2011
+rcp_end = 2020
+rcp_lbl = "RCP-" + str(rcp_beg) + "-" + str(rcp_end)
+```
+
+#### Packages
+
+```{python}
+
+import cdsapi
+import os
+from pathlib import Path
+from datetime import datetime
+
+```
+
+#### Paths
+
+```{python paths}
+dir_download = "_data/01-era5-download/"
+```
+
+#### Download ERA5 climate data
+
+```{python download-ERA5-climate-data}
+def fn_download_climate_data(
+    pth: str, 
+    var: str,
+    beg: int,
+    end: int):
+
+    out = Path(pth)
+    yrs = list(range(beg, end+1))
+    mths = list(range(1, 13))
+
+    if var == "t":
+        variable_name = "2m_temperature"
+    elif var == "p":
+        variable_name = "total_precipitation"
+
+    c = cdsapi.Client()  # will read ~/.cdsapirc
+
+    c.retrieve(
+        "reanalysis-era5-single-levels-monthly-means",
+        {
+            "product_type": "monthly_averaged_reanalysis",
+            "variable": variable_name,
+            "year": yrs,
+            "month": mths,
+            "time": "00:00",
+            "format": "netcdf"
+        },
+        str(out),
+    )
+
+pth_t = dir_download + "crp-t-monthly.nc" 
+pth_p = dir_download + "crp-p-monthly.nc" 
+if not os.path.exists(pth_t) or not os.path.exists(pth_p):
+    fn_download_climate_data(pth_t, "t", crp_beg, crp_end)
+    fn_download_climate_data(pth_p, "p", crp_beg, crp_end)
+
+pth_t = dir_download + "rcp-t-monthly.nc" 
+pth_p = dir_download + "rcp-p-monthly.nc"
+if not os.path.exists(pth_t) or not os.path.exists(pth_p):
+    fn_download_climate_data(pth_t, "t", rcp_beg, rcp_end)
+    fn_download_climate_data(pth_p, "p", rcp_beg, rcp_end)
+```
+
+#### Download ERA5 Land Sea Mask
+
+```{python download-era5-land-sea-mask}
+def fn_download_land_sea_mask(pth: str):
+    out = Path(pth)
+    c = cdsapi.Client() 
+    c.retrieve(
+        "reanalysis-era5-single-levels",
+        {
+            "product_type": "reanalysis",
+            "variable": "land_sea_mask",
+            "year": "2000",
+            "month": "01",
+            "day": "01",
+            "time": "00:00",
+            "area": "90/-179.75/-90/180", # N/W/S/E (global)
+            "grid": "0.25/0.25", # ERA5 native grid spacing
+            "format": "netcdf"
+        },
+        str(out),
+    )
+
+pth_lsm = dir_download + "land-sea-mask.nc"
+if not os.path.exists(pth_lsm) :
+    fn_download_land_sea_mask(pth_lsm)
+```
+

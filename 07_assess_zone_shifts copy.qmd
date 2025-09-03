@@ -1,9 +1,5 @@
 ---
 title: "Compare Periods"
-
-format:
-  html:
-    toc: true
 ---
 
 
@@ -42,9 +38,9 @@ crp_end <- 1990
 crp_lbl <- paste("CRP ", crp_beg, "-", crp_end, sep = "")
 
 # Climatological Period Average
-cpa_beg <- 2011
-cpa_end <- 2020
-cpa_lbl <- paste("CPA ", cpa_beg, "-", cpa_end, sep = "")
+rcp_beg <- 2011
+rcp_end <- 2020
+rcp_lbl <- paste("rcp ", rcp_beg, "-", rcp_end, sep = "")
 ```
 
 

@@ -1,0 +1,226 @@
+---
+title: "Compare Periods"
+---
+
+
+## Setup
+
+### Packages
+
+```{r setup}
+suppressPackageStartupMessages({
+  library(tidyverse)
+  library(ecmwfr)
+  library(tidync)
+  library(data.table)
+  library(sf)
+  library(arrow)
+  library(units)
+
+  library(gt)
+  #library(gtExtras)
+  #library(htmltools)
+
+  library(RColorBrewer)
+  library(viridis)
+  library(scales) # for cut_number
+  library(rnaturalearth)
+})
+```
+
+### Climate Periods
+
+```{r climate-periods}
+
+# Climatological Standard Reference Period Normals
+crp_beg <- 1961
+crp_end <- 1990
+crp_lbl <- paste("CRP ", crp_beg, "-", crp_end, sep = "")
+
+# Climatological Period Average
+rcp_beg <- 2011
+rcp_end <- 2020
+rcp_lbl <- paste("rcp ", rcp_beg, "-", rcp_end, sep = "")
+```
+
+
+### Paths
+
+```{r paths}
+dir_download <- "data/1-download/"
+dir_transform <- "data/2-transform/"
+```
+
+### Dictionaries
+
+```{r ktc-dictionary}
+
+ktc_zone <- c(
+    "Ar",
+    "Aw",
+    "BW",
+    "BS",
+    "Cs",
+    "Cf",
+    "Do",
+    "Dc",
+    "E",
+    "Ft",
+    "Fi"
+  )
+
+ktc_label <- c(
+    "Ar: Tropical Wet",
+    "Aw: Tropical Wet & Dry",
+    "BW: Desert",
+    "BS: Steppe",
+    "Cs: Mediterranean",
+    "Cf: Subtropical",
+    "Do: Temperate Oceanic",
+    "Dc: Temperate Continental",
+    "E:  Sub-Arctic",
+    "Ft: Polar Tundra",
+    "Fi: Polar Ice Cap"
+  )
+
+ktc_dict  <- data.frame(zone= ktc_zone, label=ktc_label)
+```
+
+```{r kcc-dictionary}
+
+kcc_zone <- c(
+    "Af",
+    "Am",
+    "As",
+    "Aw",
+    "BSh",
+    "BSk",
+    "BWh",
+    "BWk",
+    "Cfa",
+    "Cfb",
+    "Cfc",
+    "Csa",
+    "Csb",
+    "Csc",
+    "Cwa",
+    "Cwb",
+    "Cwc",
+    "Dfa",
+    "Dfb",
+    "Dfc",
+    "Dfd",
+    "Dsa",
+    "Dsb",
+    "Dsc",
+    "Dsd",
+    "Dwa",
+    "Dwb",
+    "Dwc",
+    "Dwd",
+    "ET",
+    "EF"
+  )
+
+kcc_label <- c(
+    "Af: Tropical (Rainforest)",
+    "Am: Tropical (Monsoon)",
+    "As: Tropical (Savanna, Dry S)",
+    "Aw: Tropical (Savanna, Dry W)",
+    "BSh: Dry (Semi-arid steppe Hot)",
+    "BSk: Dry (Semi-arid steppe Cold)",
+    "BWh: Dry (Arid desert Hot)",
+    "BWk: Dry (Arid desert Cold)",
+    "Cfa: Temperate (No dry season Hot S)",
+    "Cfb: Temperate (No dry season Warm S)",
+    "Cfc: Temperate (No dry season Cold S)",
+    "Csa: Temperate (Dry summer Hot S)",
+    "Csb: Temperate (Dry summer Warm S)",
+    "Csc: Temperate (Dry summer Cold S)",
+    "Cwa: Temperate (Dry winter Hot S)",
+    "Cwb: Temperate (Dry winter Warm S)",
+    "Cwc: Temperate (Dry winter Cold S)",
+    "Dfa: Continental (No dry season Hot S)",
+    "Dfb: Continental (No dry season Warm S)",
+    "Dfc: Continental (No dry season Cold S)",
+    "Dfd: Continental (No dry season Very cold S)",
+    "Dsa: Continental (Dry winter Hot S)",
+    "Dsb: Continental (Dry winter Warm S)",
+    "Dsc: Continental (Dry winter Cold S)",
+    "Dsd: Continental (Dry winter Very cold S)",
+    "Dwa: Continental (Dry summer Hot S)",
+    "Dwb: Continental (Dry summer Warm S)",
+    "Dwc: Continental (Dry summer Cold S)",
+    "Dwd: Continental (Dry summer Very cold S)",
+    "ET: Polar (Tundra)",
+    "EF: Polar Ice Cap"
+  )
+
+kcc_dict  <- data.frame(zone= kcc_zone, label=kcc_label)
+
+```
+
+### Palettes
+
+```{r ktc palette}
+
+ ktc_color <- c(
+    "#040ff0",
+    "#0474fb",
+    "#ffe505",
+    "#ff9005",
+    "#0eff00",
+    "#2db83d",
+    "#b64dff",
+    "#7c00ff",
+    "#017783",
+    "#72b8ce",
+    "#b4dfe3"
+  )
+
+ktc_palette  <- data.frame(zone= ktc_zone, color=ktc_color)
+
+```
+
+```{r kcc palette}
+
+ kcc_color <- c(
+    "#0000fe",
+    "#0277ff",
+    "#7abaec",
+    "#45a9f9",
+    "#f5a300",
+    "#ffdb63",
+    "#fe0100",
+    "#fe9695", 
+    "#c7ff4f",
+    "#66ff33",
+    "#32c702",
+    "#ffff00",
+    "#c6c701",
+    "#969600",
+    "#96ff96",
+    "#63c764",
+    "#329633",
+    "#03ffff",
+    "#37c7ff",
+    "#007e7d",
+    "#00455e",
+    "#ff00fe",
+    "#c600c7",
+    "#863295",
+    "#966495",
+    "#abb1ff",
+    "#5a77db",
+    "#4c51b5",
+    "#320087",
+    "#b2b2b2",
+    "#686868"
+  )
+
+kcc_palette  <- data.frame(zone= kcc_zone, color=kcc_color)
+
+```
+
+### Read classified data
+

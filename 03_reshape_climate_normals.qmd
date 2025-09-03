@@ -1,0 +1,211 @@
+---
+title: "Reshape Climate Normals"
+---
+
+### Packages
+
+```{r}
+#| label: pkg
+suppressPackageStartupMessages({
+  library(tidyverse)
+  library(arrow)
+  library(gt)
+})
+```
+
+### Climatological Reference Period 
+
+```{r}
+#| label: crp
+crp_beg <- 1961
+crp_end <- 1990
+```
+
+### Recent Climate Period
+
+```{r}
+# label: rcp
+rcp_beg <- 2011
+rcp_end <- 2020
+```
+
+### Paths
+
+```{r}
+#| label: pth
+dir_rd <- "_data/02-climate-normals/"
+dir_wr <- "_data/03-data-reshaping/"
+```
+
+### Dictionaries
+
+```{r}
+#| label: dct
+dct_ndy <- data.frame(
+    mth = 1:12,
+    ndy = as.integer(c(31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31))
+  )
+```
+
+### Functions
+
+```{r}
+#| label: fn
+#| warning: false
+fn_reshape_data <- function(crp, cv, dir_rd, dir_wr) {
+
+  fil <- paste0(crp, "_", cv, "_normals.parquet")
+  pth <- paste0(dir_rd, fil)
+  df <- read_parquet(pth) 
+
+  df <- df %>%
+  mutate(
+    lon = as.numeric(lon),
+    lat = as.numeric(lat),
+    lon = if_else(lon > 180, lon - 360, lon)
+  )
+
+  if (cv == "t") {
+    df <- df |> 
+      mutate(t = t2m - 273.15) |>
+      select(lon,lat,mth,t)
+  } else {
+    df <- df |> 
+      left_join(dct_ndy, by = "mth") |> 
+      mutate(p = tp * ndy * 1000) |>
+      select(lon,lat,mth,p)
+  }
+
+  pivot_df <- df |>
+    pivot_wider(
+      names_from = c(mth),
+      values_from = c(cv),
+      names_prefix = "m",
+      names_sep = "" # no underscore in new col names
+    )
+  fil <- paste0(crp, "_", cv, "_wide.parquet")
+  pth = paste0(dir_wr, fil)
+  write_parquet(pivot_df, pth)
+}
+```
+
+### Pivot data
+
+```{r}
+#| label: pvt
+#| warning: false
+fn_reshape_data("crp", "t", dir_rd, dir_wr)
+fn_reshape_data("crp", "p", dir_rd, dir_wr)
+fn_reshape_data("rcp", "t", dir_rd, dir_wr)
+fn_reshape_data("rcp", "p", dir_rd, dir_wr)
+```
+
+### Summarize Results
+
+```{r}
+#| label: gt1_files
+
+fil <- "crp_t_wide.parquet"
+pth = paste0(dir_wr, fil)
+df1 <- read_parquet(pth) 
+
+fil <- "crp_p_wide.parquet"
+pth = paste0(dir_wr, fil)
+df2 <- read_parquet(pth) 
+
+fil <- "rcp_t_wide.parquet"
+pth = paste0(dir_wr, fil)
+df3 <- read_parquet(pth) 
+
+fil <- "rcp_p_wide.parquet"
+pth = paste0(dir_wr, fil)
+df4 <- read_parquet(pth) 
+```
+
+
+```{r}
+#| label: gt1_build
+
+# --- function to summarize data frame into long form ---
+summarize_long <- function(df, name) {
+  df %>%
+    summarise(across(
+      everything(),
+      list(
+        min  = ~min(.x, na.rm = TRUE),
+        max  = ~max(.x, na.rm = TRUE),
+        mean = ~mean(.x, na.rm = TRUE)
+      ),
+      .names = "{.col}.{.fn}"
+    )) %>%
+    pivot_longer(
+      everything(),
+      names_to = c("variable", "stat"),
+      names_sep = "\\.",
+      values_to = "value"
+    ) %>%
+    mutate(dataset = name)
+}
+
+# --- input frames as a named list ---
+dfs <- list(df1 = df1, df2 = df2, df3 = df3, df4 = df4)
+
+# --- build combined long summary for all 4 datasets ---
+summary_long <- imap(dfs, ~summarize_long(.x, .y)) %>% bind_rows()
+
+# order variables: lat, lon, m1..m12
+var_order <- c("lat", "lon", paste0("m", 1:12))
+
+# --- pivot to wide: columns = dataset_stat (e.g., df1_min) ---
+wide <- summary_long %>%
+  mutate(variable = factor(variable, levels = var_order)) %>%
+  arrange(variable, dataset, stat) %>%
+  pivot_wider(
+    id_cols = variable,
+    names_from = c(dataset, stat),
+    values_from = value,
+    names_sep = "_"
+  )
+
+# ensure a clean column order
+col_order <- c(
+  "variable",
+  unlist(lapply(names(dfs), function(d) paste0(d, c("_min", "_max", "_mean"))))
+)
+wide <- wide %>% select(any_of(col_order))
+
+# map column names to pretty labels
+label_map <- setNames(rep(c("Min", "Max", "Mean"), length(dfs)), col_order[-1])
+
+# --- build gt table with nested spanners ---
+gt_tbl <-
+  wide %>%
+  gt() %>%
+  tab_header(
+    title = "Summary of Climate Variables",
+    #subtitle = "Min / Max / Mean for Climatology vs Recent Climate Period"
+  ) %>%
+  cols_label(!!!label_map, variable = "Variable") %>%
+  # dataset-level spanners with custom labels
+  tab_spanner(label = "CRP Temperature (°C)", columns = c(df1_min, df1_max, df1_mean)) %>%
+  tab_spanner(label = "CRP Precipitation (mm)", columns = c(df2_min, df2_max, df2_mean)) %>%
+  tab_spanner(label = "RCP Temperature (°C)", columns = c(df3_min, df3_max, df3_mean)) %>%
+  tab_spanner(label = "RCP Precipitation (mm)", columns = c(df4_min, df4_max, df4_mean)) %>%
+  # higher-level spanners
+  tab_spanner(
+    label = "Climatological Reference Period 1961-1990",
+    columns = c(df1_min, df1_max, df1_mean,
+                df2_min, df2_max, df2_mean)
+  ) %>%
+  tab_spanner(
+    label = "Recent Climate Period 2011-2020",
+    columns = c(df3_min, df3_max, df3_mean,
+                df4_min, df4_max, df4_mean)
+  ) %>%
+  fmt_number(
+    columns = setdiff(colnames(wide), "variable"),
+    decimals = 2
+  )
+
+gt_tbl
+```
