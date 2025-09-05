@@ -49,5 +49,14 @@
   },
   "04_derive_classification_metrics.qmd": {
     "04_derive_classification_metrics.html": "c2620b9d"
+  },
+  "03_derive_classification_metrics.qmd": {
+    "03_derive_classification_metrics.html": "824de3f4"
+  },
+  "04_apply_climate_classification.qmd": {
+    "04_apply_climate_classification.html": "6b996696"
+  },
+  "04_apply_classification_systems.qmd": {
+    "04_apply_classification_systems.html": "7d007108"
   }
 }

@@ -1,0 +1,250 @@
+---
+title: "Derive Classification Metrics"
+---
+
+### ***Packages***
+
+```{r}
+#| label: pkg
+suppressPackageStartupMessages({
+  library(tidyverse)
+  library(arrow)
+  library(gt)
+})
+```
+
+### ***Climate Periods***
+
+```{r}
+#| label: climate_periods
+
+# Climatological Reference Period
+crp = "crp"
+crp_beg = 1961
+crp_end = 1990
+# Recent Climate Period
+rcp = "rcp"
+rcp_beg = 2011
+rcp_end = 2020
+```
+
+### ***Directories***
+
+```{r}
+#| label: directories
+dir_rd <- "_data/02_climate_normals/"
+dir_wr <- "_data/03_classification_metrics/"
+```
+
+### ***Functions***
+
+```{r}
+#| label: fn_calc-grid-area
+fn_calc_area <- function(df) {
+  earth_radius_km <- 6371
+  lat_grid_degrees <- 0.25
+  lon_grid_degrees <- 0.25
+  area_df <- df |>
+    mutate(
+      lat_radians = lat * pi / 180,
+      lat_grid_radians = lat_grid_degrees * pi / 180,
+      lon_grid_radians = lon_grid_degrees * pi / 180,
+      # cell area in km^2
+      area = (earth_radius_km^2 *
+        lon_grid_radians *
+        (sin(lat_radians + lat_grid_radians / 2) -
+          sin(lat_radians - lat_grid_radians / 2))) /
+        1e6
+    ) |>
+    select(-lat_radians, -lat_grid_radians, -lon_grid_radians) |>
+    select(lat, lon, area, lsm, everything())
+  area_df <- area_df |> 
+    mutate(land = area*lsm)
+  return(area_df)
+}
+```
+
+```{r}
+#| label: fn_classifcation_metrics
+fn_classifcation_metrics <- function(crp, cv, dir_rd, dir_wr) {
+
+  fil <- paste0(crp, "_", cv, "_climate_normals.parquet")
+  pth <- paste0(dir_rd, fil)
+  df <- read_parquet(pth) 
+
+  mcols <- paste0("m", 1:12)
+
+  if (cv == "t") {
+    df <- df |>
+      mutate(
+         tavg = (m1 + m2 + m3 + m4 + m5 + m6 + m7 + m8 + m9 + m10 + m11 + m12) / 12,
+         tmax = pmax(m1, m2, m3, m4, m5, m6, m7, m8, m9, m10, m11, m12),
+         tmin = pmin(m1, m2, m3, m4, m5, m6, m7, m8, m9, m10, m11, m12),
+         tg10 = rowSums(across(all_of(mcols), ~ .x >= 10))
+      ) 
+    }
+
+  if (cv == "p") {
+    df <- df |>
+      mutate(
+        ptot = (m1 + m2 + m3 + m4 + m5 + m6 + m7 + m8 + m9 + m10 + m11 + m12),
+        pavg = (ptot / 12),
+        pmax = pmax(m1, m2, m3, m4, m5, m6, m7, m8, m9, m10, m11, m12),
+        pmin = pmin(m1, m2, m3, m4, m5, m6, m7, m8, m9, m10, m11, m12),
+        pl60 = rowSums(across(all_of(mcols), ~ .x < 60)),
+        wavg = case_when(
+          lat >= 0 ~ (m1 + m2 + m3 + m10 + m11 + m12) / 6,
+          lat < 0 ~ (m4 + m5 + m6 + m7 + m8 + m9) / 6
+        ),
+        wmax = case_when(
+          lat >= 0 ~ pmax(m10, m11, m12, m1, m2, m3),
+          lat < 0 ~ pmax(m4, m5, m6, m7, m8, m9)
+        ),
+        wmin = case_when(
+          lat >= 0 ~ pmin(m10, m11, m12, m1, m2, m3),
+          lat < 0 ~ pmin(m4, m5, m6, m7, m8, m9)
+        ),
+        savg = case_when(
+          lat >= 0 ~ (m4 + m5 + m6 + m7 + m8 + m9) / 6,
+          lat < 0 ~  (m1 + m2 + m3 + m10 + m11 + m12)/ 6
+        ),
+        smax = case_when(
+          lat >= 0 ~ pmax(m4, m5, m6, m7, m8, m9),
+          lat < 0 ~ pmax(m10, m11, m12, m1, m2, m3)
+        ),
+        smin = case_when(
+          lat >= 0 ~ pmin(m4, m5, m6, m7, m8, m9),
+          lat < 0 ~ pmin(m10, m11, m12, m1, m2, m3)
+        )
+      )
+  }
+
+  df <- df |>
+    select(-m1, -m2, -m3, -m4, -m5, -m6, -m7, -m8, -m9, -m10, -m11, -m12)
+
+  return(df)
+}
+```
+
+```{r}
+#| label: fn_calc_thresholds
+fn_calc_thresholds<- function(df) {
+  df <- df |>
+    mutate(
+      pthr = case_when(
+        savg / pavg >= 0.7 ~ tavg * 20 + 280,
+         savg / pavg >= 0.3 ~ tavg * 20 + 140,
+         TRUE ~ tavg * 20
+      )
+    )
+  df <- df |>
+    mutate(
+      athr = case_when(
+        pavg != 0 ~ (10 * (tavg - 10)) + (3 * (savg / pavg) * 100),
+        TRUE ~ 10 * (tavg - 10)
+      )
+    )
+  return(df)
+}
+```
+
+### ***Calculate metrics***
+
+```{r}
+#| label: calculate_metrics
+t_df <- fn_classifcation_metrics("crp", "t", dir_rd, dir_wr)
+p_df <- fn_classifcation_metrics("crp", "p", dir_rd, dir_wr)
+crp_metrics_df <- t_df %>% left_join(p_df, by = c("lon", "lat", "lsm"))
+crp_metrics_df <- fn_calc_area(crp_metrics_df)
+crp_metrics_df <- fn_calc_thresholds(crp_metrics_df)
+
+fil <- "crp_classification_metrics.parquet"
+pth = paste0(dir_wr, fil)
+write_parquet(crp_metrics_df, pth)
+
+t_df <- fn_classifcation_metrics("rcp", "t", dir_rd, dir_wr)
+p_df <- fn_classifcation_metrics("rcp", "p", dir_rd, dir_wr)
+rcp_metrics_df <- t_df %>% left_join(p_df, by = c("lon", "lat", "lsm"))
+rcp_metrics_df <- fn_calc_area(rcp_metrics_df)
+rcp_metrics_df <- fn_calc_thresholds(rcp_metrics_df)
+
+fil <- "rcp_classification_metrics.parquet"
+pth = paste0(dir_wr, fil)
+write_parquet(rcp_metrics_df, pth)
+
+```
+
+### ***Summarize Results***
+
+```{r}
+#| label: summarize_results
+fn_summarize_df <- function(dir, cp) {
+  fil <- paste0(cp, "_classification_metrics.parquet")
+  pth <- paste0(dir,fil)
+  df <- read_parquet(pth)
+  df_means <- df |> 
+    select(-c(1:4)) |> 
+    # this format is now recommended for dplyr
+    summarise(across(everything(), \(x) mean(x, na.rm = TRUE))) |> 
+    pivot_longer(everything(),
+               names_to = "stat_id",
+               values_to = "stat_value")
+  return(df_means)
+}
+
+df1 <- fn_summarize_df(dir_wr, "crp")
+df2 <- fn_summarize_df(dir_wr, "rcp")
+
+df_joined <- df1 |> 
+  full_join(df2, by = "stat_id") |> 
+  rename(
+    crp_stat = stat_value.x,
+    rcp_stat = stat_value.y
+  ) |> 
+  mutate(
+    stat_id = recode(stat_id,
+      "tavg" = "Avg Temperature",
+      "tmax" = "Max Temperature",
+      "tmin" = "Min Temperature",
+      "tg10" = "Months with Temperature > 10C",
+      "ptot" = "Total Annual Precipitation",
+      "pavg" = "Avg Precipitation",
+      "pmax" = "Max Precipitation",
+      "pmin" = "Min Precipitation",
+      "pl60" = "Months with Precipitation < 60mm",
+      "wavg" = "Avg Winter Precipitation",
+      "wmax" = "Max Winter Precipitation",
+      "wmin" = "Min Winter Precipitation",
+      "savg" = "Avg Summer Precipitation",
+      "smax" = "Max Summer Precipitation",
+      "smin" = "Min Summer Precipitation",
+      "pthr" = "Precipitation Threshold",
+      "athr" = "Aridity Threshold"
+    )
+  )
+
+gt_tbl <- 
+  df_joined |>
+    gt(rowname_col = "stat_id") |>
+    tab_header(
+      title = "Climate Classification Metrics Summary"
+    ) |>
+    tab_spanner(
+      label = "CRP 1961-1990",
+      columns = c(crp_stat)
+    ) |>
+    tab_spanner(
+      label = "RCP 2011-2020",
+      columns = c(rcp_stat)
+    ) |>
+    cols_label(
+      crp_stat = "Average Metric",
+      rcp_stat = "Average Metric",
+    ) |>
+    fmt_number(
+      columns = c(crp_stat, rcp_stat),
+      decimals = 2
+   )
+
+gt_tbl
+```

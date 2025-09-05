@@ -1,0 +1,342 @@
+---
+title: "Apply Climate Classification Systems"
+---
+
+### ***Climate Periods***
+```{r}
+#| label: climate_periods
+# Climatological Standard Reference Period Normals
+crp_beg <- 1961
+crp_end <- 1990
+crp_lbl <- paste("CRP ", crp_beg, "-", crp_end, sep = "")
+# Climatological Period Average
+rcp_beg <- 2011
+rcp_end <- 2020
+rcp_lbl <- paste("RCP ", rcp_beg, "-", rcp_end, sep = "")
+```
+
+### ***Packages***
+```{r}
+#| label: packages
+suppressPackageStartupMessages({
+  library(tidyverse)
+  library(sf)
+  library(arrow)
+  library(gt)
+  library(units)
+  #library(RColorBrewer)
+  #library(viridis)
+  #library(scales) # for cut_number
+  # library(rnaturalearth)
+})
+```
+
+### ***Directoreis***
+```{r}
+#| label: directories
+dir_rf <- "_data/00_reference/"
+dir_rd <- "_data/03_classification_metrics/"
+dir_wr <- "_data/04_zone_classifications/"
+```
+
+### ***Options***
+```{r}
+#| label: figures
+knitr::opts_chunk$set(fig.path = "_figures/classify-")
+```
+
+### ***KCC Zone Info***
+```{r}
+#| label: kcc_zone_info
+dir <- dir_rf
+fil <- "kcc_zones.csv"
+pth <- paste0(dir,fil)
+kcc_zone_info <- read_csv(pth, show_col_types = FALSE)
+```
+
+### ***TCC Zone Info***
+```{r}
+#| label: tcc_zone_info
+dir <- dir_rf
+fil <- "tcc_zones.csv"
+pth <- paste0(dir,fil)
+tcc_zone_info <- read_csv(pth, show_col_types = FALSE)
+```
+
+### ***Map Projections***
+```{r}
+#| label: projections
+rbn_prj <- "ESRI:54030"
+```
+
+### ***Global Coastline***
+```{r}
+#| label: global_coastline
+dir <- dir_rf
+fil <- "global-coastline.gpkg"
+pth <- paste(dir, fil, sep = "")
+coastline_sf <- st_read(pth, quiet=TRUE)
+```
+
+### ***Classification metrics***
+```{r}
+#| label: classification_metrics
+pth <- paste(dir_rd, "crp_classification_metrics.parquet", sep = "")
+crp_metrics_df <- read_parquet(pth) 
+pth <- paste(dir_rd, "rcp_classification_metrics.parquet", sep = "")
+rcp_metrics_df <- read_parquet(pth) 
+```
+
+### ***Functions***
+```{r}
+#| label: fn_classify_kcc
+fn_classify_kcc <- function(df) {
+  df <- df |>
+    mutate(
+      z1 = case_when(
+        tmax < 10 ~ "E",
+        ptot < pthr ~ "B",
+        tmin > 18 ~ "A",
+        tmax > 10 & tmin >= -3 ~ "C",
+        tmax > 10 & tmin <= -3 ~ "D",
+        TRUE ~ ""
+      )
+    )
+  df <- df |>
+    mutate(
+      z2 = case_when(
+        z1 == "A" & pmin >= 60 ~ "f",
+        z1 == "A" & pmin < 60 & pmin >= (100 - ptot / 25) ~ "m",
+        z1 == "A" & pmin < (100 - ptot / 25) & wavg > savg ~ "w",
+        z1 == "A" ~ "s",
+
+        z1 == "B" & ptot <= (pthr * 0.5) ~ "W",
+        z1 == "B" ~ "S",
+
+        z1 == "C" & smin < 40 & wmax >= smin * 3 ~ "s",
+        z1 == "C" & smax >= wmin * 10 ~ "w",
+        z1 == "C" ~ "f",
+
+        z1 == "D" & smin < 40 & wmax >= smin * 3 ~ "s",
+        z1 == "D" & smax >= wmin * 10 ~ "w",
+        z1 == "D" ~ "f",
+
+        z1 == "E" & tmax > 0 ~ "T",
+        z1 == "E" & tmax <= 0 ~ "F",
+
+        TRUE ~ ""
+      )
+    )
+  df <- df |> 
+    mutate(
+      z3 = case_when(
+        z1 == "B" & tavg >= 18 ~ "h",
+        z1 == "B" ~ "k",
+
+        z1 == "C" & tmax >= 22 ~ "a",
+        z1 == "C" & tg10 >= 4 ~ "b",
+        z1 == "C" ~ "c",
+
+        z1 == "D" & tmax >= 22 ~ "a",
+        z1 == "D" & tg10 >= 4 ~ "b",
+        z1 == "D" & tmin < -38 ~ "d",
+        z1 == "D" ~ "c",
+
+        TRUE ~ ""
+      ),
+    zn = paste(z1, z2, z3, sep = "")  
+    )
+
+  df <- df|> select(lon, lat, lsm, zn, land)
+  return(df)
+}
+
+```
+
+```{r}
+#| label: fn_classify_tcc
+fn_classify_tcc <- function(df) {
+  df <- df |>
+    mutate(
+      z1 = case_when(
+        tmax < 10 ~ "F",
+        ptot < (athr * 2) ~ "B",
+        tmin >= 18 ~ "A",
+        tg10 >= 8 ~ "C",
+        tg10 >= 4 ~ "D",
+        tg10 >= 1 ~ "E",
+        TRUE ~ "X"
+      ),
+      zn = ""
+    )
+  df <- df |>
+    mutate(
+      z2 = case_when(
+        z1 == "A" & pl60 <= 2 ~ "r",
+        z1 == "A" ~ "w",
+        z1 == "B" & ptot < athr ~ "W",
+        z1 == "B" ~ "S",
+        z1 == "C" & wavg >= savg * 3 & pmin < 30 & ptot < 890 ~ "s",
+        z1 == "C" ~ "f",
+        z1 == "D" & tmin > 0 ~ "o",
+        z1 == "D" ~ "c",
+        z1 == "F" & tmax > 0 ~ "t",
+        z1 == "F" ~ "i",
+        TRUE ~ ""
+      ),
+      zn = paste(z1, z2, sep = "")
+    )
+  df <- df|> select(lon, lat, lsm, zn, land)
+  return(df)
+}
+```
+
+### ***Apply classification systems***
+```{r}
+#| label: apply_classification_systems
+df1 <- fn_classify_kcc(crp_metrics_df)
+df2 <- fn_classify_kcc(rcp_metrics_df)
+kcc_df <- df1 |>
+  left_join(df2 , by = c("lon", "lat", "lsm")) |>
+  rename(czn = zn.x, rzn = zn.y, area = land.x) |>
+  select(lon, lat, lsm, area, czn, rzn)
+rm(df1, df2)
+
+df1 <- fn_classify_tcc(crp_metrics_df)
+df2 <- fn_classify_tcc(rcp_metrics_df)
+tcc_df <- df1 %>% 
+  left_join(df2 , by = c("lon", "lat", "lsm")) |>
+  rename(czn = zn.x, rzn = zn.y, area = land.x) |>
+  select(lon, lat, lsm, area, czn, rzn)
+rm(df1, df2)
+
+rm(crp_metrics_df, rcp_metrics_df)
+```
+
+### ***Convert to spatial data frames***
+```{r}
+#| label: convert_to_spatial
+kcc_sf <- st_as_sf(kcc_df, coords = c("lon", "lat"), crs = 4326)
+tcc_sf <- st_as_sf(tcc_df, coords = c("lon", "lat"), crs = 4326)
+```
+
+### ***Aggregate geometry***
+```{r}
+#| label: caggregate_kcc_geometry
+kcc_agg_geom_sf <- kcc_sf |>
+  filter(lsm > 0) |>
+  summarise(
+    geometry = st_combine(geometry),
+    mkm = sum(area),
+    .by = c(czn, rzn)
+  ) |>
+  mutate(cz1 = substr(czn, 1, 1)) |>
+  mutate(rz1 = substr(rzn, 1, 1)) |>
+  mutate(pct = round(mkm / sum(mkm) * 100, 3)) |>
+  select(czn, cz1, rzn, rz1, mkm, pct, geometry) |>
+  arrange(czn, rzn)
+kcc_agg_geom_sf <- st_set_crs(kcc_agg_geom_sf, 4326)
+```
+
+```{r}
+#| label: caggregate_tcc_geometry
+tcc_agg_geom_sf <- tcc_sf |>
+  filter(lsm > 0) |>
+  summarise(
+    geometry = st_combine(geometry),
+    mkm = sum(area),
+    .by = c(czn, rzn)
+  ) |>
+  mutate(cz1 = substr(czn, 1, 1)) |>
+  mutate(rz1 = substr(rzn, 1, 1)) |>
+  mutate(pct = round(mkm / sum(mkm) * 100, 3)) |>
+  select(czn, cz1, rzn, rz1, mkm, pct, geometry) |>
+  arrange(czn, rzn)
+tcc_agg_geom_sf <- st_set_crs(tcc_agg_geom_sf, 4326)
+```
+
+### ***Save Results***
+```{r}
+fil <- "kcc_zone_classifications.gpkg"
+dir <- dir_wr
+pth <- paste0(dir,fil)
+st_write(kcc_agg_geom_sf, pth, delete_dsn = TRUE, quiet = TRUE)
+
+fil <- "tcc_zone_classifications.gpkg"
+dir <- dir_wr
+pth <- paste0(dir,fil)
+st_write(tcc_agg_geom_sf, pth, delete_dsn = TRUE, quiet = TRUE)
+
+```
+
+### KCC Visualization
+
+```{r}
+#| label: kcc_visualization
+plot_data <- kcc_agg_geom_sf |>
+  select(czn) |>
+  rename(zone = czn)
+
+p1 <- ggplot(plot_data) +
+  geom_sf(aes(color = zone), size = 0.01) +
+  scale_color_manual(
+    values = setNames(kcc_zone_info$color, kcc_zone_info$zone),
+    labels = setNames(kcc_zone_info$zone, kcc_zone_info$zone)
+  ) +
+  geom_sf(
+    data = coastline_sf,
+    color = "black",
+    linewidth = 0.1
+  ) +
+  coord_sf(crs = rbn_prj) +
+  labs(
+    title = "Köppen Climate Classification",
+    subtitle = crp_lbl,
+    color = "Zones"
+  ) +
+  guides(
+    color = guide_legend(
+      override.aes = list(
+        size = 3 # legend point size only
+      )
+    )
+  )
+
+p1
+```
+
+### TCC Visualization
+
+```{r}
+#| label: tcc_visualization
+plot_data <- tcc_agg_geom_sf |>
+  select(czn) |>
+  rename(zone = czn)
+
+p2 <- ggplot(plot_data) +
+  geom_sf(aes(color = zone), size = 0.01) +
+  scale_color_manual(
+    values = setNames(tcc_zone_info$color, tcc_zone_info$zone),
+    labels = setNames(tcc_zone_info$zone, tcc_zone_info$zone)
+  ) +
+  geom_sf(
+    data = coastline_sf,
+    color = "black",
+    linewidth = 0.1
+  ) +
+  coord_sf(crs = rbn_prj) +
+  labs(
+    title = "Trewartha Climate Classification",
+    subtitle = crp_lbl,
+    color = "Zones"
+  ) +
+  guides(
+    color = guide_legend(
+      override.aes = list(
+        size = 3 # legend point size only
+      )
+    )
+  )
+
+p2
+```

@@ -1,93 +1,29 @@
 ---
-title: "Compare Periods"
+title: "Reference for Global Climate Classification Changes"
+format: html
 ---
 
 
-## Setup
+### ***Packages***
 
-### Packages
-
-```{r setup}
+```{r}
+#| label: pkg
 suppressPackageStartupMessages({
   library(tidyverse)
-  library(ecmwfr)
-  library(tidync)
-  library(data.table)
-  library(sf)
-  library(arrow)
-  library(units)
-
-  library(gt)
-  #library(gtExtras)
-  #library(htmltools)
-
-  library(RColorBrewer)
-  library(viridis)
-  library(scales) # for cut_number
-  library(rnaturalearth)
 })
 ```
 
-### Climate Periods
 
-```{r climate-periods}
-
-# Climatological Standard Reference Period Normals
-crp_beg <- 1961
-crp_end <- 1990
-crp_lbl <- paste("CRP ", crp_beg, "-", crp_end, sep = "")
-
-# Climatological Period Average
-rcp_beg <- 2011
-rcp_end <- 2020
-rcp_lbl <- paste("rcp ", rcp_beg, "-", rcp_end, sep = "")
-```
-
-
-### Paths
+### ***Directories***
 
 ```{r paths}
-dir_download <- "data/1-download/"
-dir_transform <- "data/2-transform/"
+dir_ref <- "_data/00_reference/"
 ```
 
-### Dictionaries
+### ***Koppen Climate Zones***
 
-```{r ktc-dictionary}
-
-ktc_zone <- c(
-    "Ar",
-    "Aw",
-    "BW",
-    "BS",
-    "Cs",
-    "Cf",
-    "Do",
-    "Dc",
-    "E",
-    "Ft",
-    "Fi"
-  )
-
-ktc_label <- c(
-    "Ar: Tropical Wet",
-    "Aw: Tropical Wet & Dry",
-    "BW: Desert",
-    "BS: Steppe",
-    "Cs: Mediterranean",
-    "Cf: Subtropical",
-    "Do: Temperate Oceanic",
-    "Dc: Temperate Continental",
-    "E:  Sub-Arctic",
-    "Ft: Polar Tundra",
-    "Fi: Polar Ice Cap"
-  )
-
-ktc_dict  <- data.frame(zone= ktc_zone, label=ktc_label)
-```
-
-```{r kcc-dictionary}
-
+```{r}
+#| label: kcc_climate_zones
 kcc_zone <- c(
     "Af",
     "Am",
@@ -156,34 +92,6 @@ kcc_label <- c(
     "EF: Polar Ice Cap"
   )
 
-kcc_dict  <- data.frame(zone= kcc_zone, label=kcc_label)
-
-```
-
-### Palettes
-
-```{r ktc palette}
-
- ktc_color <- c(
-    "#040ff0",
-    "#0474fb",
-    "#ffe505",
-    "#ff9005",
-    "#0eff00",
-    "#2db83d",
-    "#b64dff",
-    "#7c00ff",
-    "#017783",
-    "#72b8ce",
-    "#b4dfe3"
-  )
-
-ktc_palette  <- data.frame(zone= ktc_zone, color=ktc_color)
-
-```
-
-```{r kcc palette}
-
  kcc_color <- c(
     "#0000fe",
     "#0277ff",
@@ -217,10 +125,102 @@ ktc_palette  <- data.frame(zone= ktc_zone, color=ktc_color)
     "#b2b2b2",
     "#686868"
   )
+```
 
-kcc_palette  <- data.frame(zone= kcc_zone, color=kcc_color)
+```{r}
+kcc_climate_zones  <- data.frame(
+    zone = kcc_zone, 
+    label = kcc_label,
+    color = kcc_color)
+```
+
+```{r}
+dir <- dir_ref
+fil <- "kcc_zones.csv"
+pth <- paste0(dir,fil)
+write_csv(kcc_climate_zones, pth)
+```
+
+```{r}
+dir <- dir_ref
+fil <- "kcc_zones.csv"
+pth <- paste0(dir,fil)
+check_df <- read_csv(pth, show_col_types = FALSE)
+```
+
+### ***Trewartha Climate Zones***
+
+```{r}
+dir <- dir_ref
+fil <- "tcc_zones.csv"
+pth <- paste0(dir,fil)
+write_csv(tcc_climate_zones, pth)
+```
+
+```{r ktc-dictionary}
+
+tcc_zone <- c(
+    "Ar",
+    "Aw",
+    "BW",
+    "BS",
+    "Cs",
+    "Cf",
+    "Do",
+    "Dc",
+    "E",
+    "Ft",
+    "Fi"
+  )
+
+tcc_label <- c(
+    "Ar: Tropical Wet",
+    "Aw: Tropical Wet & Dry",
+    "BW: Desert",
+    "BS: Steppe",
+    "Cs: Mediterranean",
+    "Cf: Subtropical",
+    "Do: Temperate Oceanic",
+    "Dc: Temperate Continental",
+    "E:  Sub-Arctic",
+    "Ft: Polar Tundra",
+    "Fi: Polar Ice Cap"
+  )
+
+tcc_color <- c(
+    "#040ff0",
+    "#0474fb",
+    "#ffe505",
+    "#ff9005",
+    "#0eff00",
+    "#2db83d",
+    "#b64dff",
+    "#7c00ff",
+    "#017783",
+    "#72b8ce",
+    "#b4dfe3"
+  )
 
 ```
 
-### Read classified data
 
+```{r}
+tcc_climate_zones  <- data.frame(
+    zone = tcc_zone, 
+    label = tcc_label,
+    color = tcc_color)
+```
+
+```{r}
+dir <- dir_ref
+fil <- "tcc_zones.csv"
+pth <- paste0(dir,fil)
+write_csv(tcc_climate_zones, pth)
+```
+
+```{r}
+dir <- dir_ref
+fil <- "tcc_zones.csv"
+pth <- paste0(dir,fil)
+check_df <- read_csv(pth, show_col_types = FALSE)
+```

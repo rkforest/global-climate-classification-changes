@@ -1,26 +1,27 @@
 ---
 title: "Compute Climate Normals"
-engine: jupyter      
-jupyter: myproj  
+engine: jupyter
+jupyter: myproj
 ---
 
-Aggregate temperature and precipitation data for each climate period by longitude, latitude and month number producing a single value per grid cell and month number.
+Aggregate temperature and precipitation data for each climate period by longitude, latitude and month number producing a single value per grid cell and month number.  Reshape data from long form to wide form (one row per grid cell with each monthly value in a separate column) to facillite the deriving of classification metrics.
 
-### ***Climatological Reference Period***
+### ***Climate Periods***
+
 ```{python}
-#| label: crp
+#| label: climate_periods
+# Climatological Reference Period
+crp = "crp"
 crp_beg = 1961
 crp_end = 1990
-```
-
-### ***Recent Climate Period***
-```{python}
-#| label: rcp
+# Recent Climate Period
+rcp = "rcp"
 rcp_beg = 2011
 rcp_end = 2020
 ```
 
 ### ***Packages***
+
 ```{python}
 #| label: packages
 import xarray as xr
@@ -32,96 +33,120 @@ from datetime import datetime
 ```
 
 ### ***Directories***
+
 ```{python}
-#| label: paths
-dir_rd = "_data/01-era5-download/"
-dir_wr = "_data/02-climate-normals/"
+#| label: directories
+dir_rd = "_data/01_era5_download/"
+dir_wr = "_data/02_climate_normals/"
+```
+
+### ***Read Land Sea Mask***
+
+```{python}
+#| label: read_land_sea_mask
+fil = "land_sea_mask.nc"
+pth = Path(dir_rd) / fil
+ds = xr.open_dataset(
+    pth,
+    engine="h5netcdf",
+    chunks="auto", 
+    decode_cf=True
+)
+df_lsm = ds["lsm"].to_dataframe().reset_index()
+df_lsm = df_lsm.rename(columns={"longitude": "lon", "latitude": "lat"})
+df_lsm = df_lsm[["lon","lat","lsm"]]
 ```
 
 ### ***Functions***
 
-```{python }
-#| label: functions
-def fn_climate_normals(
-    dir_rd: str,
-    dir_wr: str,
+```{python}
+#| label: fn_compute_climate_normals
+def fn_compute_climate_normals(
     cp: str,
     cv: str,
     vnm: str):
-
     fil = cp + "_" + cv + "_monthly.nc"
     pth = Path(dir_rd) / fil
-    ds0 = xr.open_dataset(
+    ds = xr.open_dataset(
         pth,
         engine="h5netcdf",
         chunks="auto", 
         decode_cf=True
     )
+    ds = ds.drop_vars("number")
+    # extract month number from time variable
+    ds = ds.assign_coords(mth=ds["valid_time"].dt.month)
+    # group by month number
+    grp_vnm_da = ds[vnm].groupby("mth").mean("valid_time", keep_attrs=True)
+    # convert to pandas df
+    df_vnm = grp_vnm_da.to_dataframe().reset_index()
+    # rename lon and lat columns
+    df = df_vnm.rename(columns={"longitude": "lon", "latitude": "lat"})
 
-    # Select deterministic member if an ensemble dim exists
-    if "number" in ds0.dims:
-        # If 0 exists, pick it; else pick the first available
-        sel_val = 0 if 0 in ds0["number"].values else ds0["number"].values[0]
-        ds0 = ds0.sel(number=sel_val)
-
-    # If the coordinate is named valid_time, rename it to time
-    if "valid_time" in ds0.coords and "time" not in ds0.coords:
-        ds0 = ds0.rename({"valid_time": "time"})
-            
-    # add month coordinate
-    if "month" not in ds0.coords:
-        ds0 = ds0.assign_coords(mth=ds0["time"].dt.month)
-
-    # --- build climatology ---
-    clim_mon = ds0[vnm].groupby("mth").mean("time", keep_attrs=True)
-
-    # --- convert to a tidy DataFrame ---
-    # This will create columns: [lon, lat, mth, var1, var2, ...]
-    df = clim_mon.to_dataframe().reset_index()
-
-    # optional: rename coords for consistency
-    df = df.rename(columns={"longitude": "lon", "latitude": "lat"})
-
-    # drop unused ensemble number
-    df_new = df.drop(columns=["number"])
-
+    # convert lon values from 0 to 360  to -180 to 180
+    df["lon"] = np.where(df["lon"] > 180, df["lon"] - 360, df["lon"])
+    # modify variables based on type: t = temperature, p = precipitation
+    if cv == "t":
+        # convert temperature from kelvin to celsius
+        df["t"] = df["t2m"] - 273.15
+        # select columns to keep
+        df = df[["lon", "lat", "mth", "t"]]
+    elif cv == "p":
+        # since era5 precipitation is stored as a daily average, multiply by days in month
+        ds["ndy"] = ds["valid_time"].dt.days_in_month
+        # climate perdiod average number of days in each month number (12 values)
+        da_ndy = ds["ndy"].groupby("mth").mean("valid_time", keep_attrs=True)
+        # convert to df before merging
+        df_ndy = da_ndy.to_dataframe().reset_index()
+        # merge with precipation df
+        df = df.merge(df_ndy[["mth", "ndy"]], on="mth", how="left")
+        # conversion from daily avg in m to monthly avg in mm
+        df["p"] = df["tp"] * df["ndy"] * 1000
+        # select columns to keep
+        df = df[["lon", "lat", "mth", "p"]]
     # downcast columns to reduce size
-    df_new = df_new.astype({"lon": "float32", "lat": "float32"})
-    df_new = df_new.astype({"mth": "int8"})
-    #df_new ["small_ints"] = pd.to_numeric(df["small_ints"], downcast="integer")
-
-    # --- save as parquet ---
-    fil = cp + "_" + cv + "_normals.parquet"
-    pth = Path(dir_wr) / fil
-    df_new.to_parquet(pth, index=False)
-
+    df = df.astype({"lon": "float32", "lat": "float32"})
+    df = df.astype({"mth": "int8"})
+    return(df)
 ```
 
-### ***Calculate Climate Normals***
+```{python}
+#| label: fn_pivot_climate_normals
+def fn_pivot_climate_normals(
+    df: pd.DataFrame,
+    cp: str,
+    cv: str):
+    # Pivot to wide form
+    wide_df = df.pivot(index=["lon", "lat"], columns="mth", values=cv)
+    # Ensure columns are in month order 1–12
+    wide_df = wide_df.reindex(columns=range(1, 13))
+    # Rename columns 1..12 to m1..m12
+    wide_df.columns = [f"m{m}" for m in wide_df.columns]
+    # Reset index to keep lon and lat as normal columns
+    wide_df = wide_df.reset_index()
+
+    # add land sea mask based on lon and lat
+    wide_df = wide_df.merge(df_lsm, on=["lon", "lat"],  how="left")
+    # Save as parquet file
+    fil = cp + "_" + cv + "_climate_normals.parquet"
+    pth = Path(dir_wr) / fil
+    wide_df.to_parquet(pth, index=False)
+    return(wide_df)
+```
+
+### ***Compute Climate Normals***
 
 ```{python}
-#| label: main
+#| label: compute_climate_normals
 start = datetime.now()
-fn_climate_normals(dir_rd, dir_wr, "crp", "t", "t2m")
-fn_climate_normals(dir_rd, dir_wr, "crp", "p", "tp")
-fn_climate_normals(dir_rd, dir_wr, "rcp", "t", "t2m")
-fn_climate_normals(dir_rd, dir_wr, "rcp", "p", "tp")
+df1 = fn_compute_climate_normals(crp, "t", "t2m")
+df2 = fn_compute_climate_normals(crp, "p", "tp")
+df3 = fn_compute_climate_normals(rcp, "t", "t2m")
+df4 = fn_compute_climate_normals(rcp, "p", "tp")
+wide_df1 = fn_pivot_climate_normals(df1, crp, "t")
+wide_df2 = fn_pivot_climate_normals(df2, crp, "p")
+wide_df3 = fn_pivot_climate_normals(df3, rcp, "t")
+wide_df4 = fn_pivot_climate_normals(df4, rcp, "p")
 end = datetime.now()
 print("elapsed time: " + str(end - start))
-```
-
-### ***Check results***
-
-```{python}
-#| label: check
-cp = "crp"
-cv = "t"
-fil = cp + "_" + cv + "_normals.parquet"
-pth = Path(dir_wr) / fil
-df = pd.read_parquet(pth)
-df.info()
-df
-
-mth_counts = df['mth'].value_counts()
-mth_counts
 ```

@@ -1,55 +1,61 @@
 ---
 title: "Download ERA5 Data"
-engine: jupyter       # <-- important
-jupyter: myproj      # or the exact kernel name you want
+engine: jupyter
+jupyter: myproj
 ---
 
-#### ***Climatological Reference Period***
+Download and save ERA5 climate reanalysis datasets using the Climate Data Store CDSAPI <https://cds.climate.copernicus.eu/how-to-api>.
 
-Average climate computed for a consecutive 30 year period defined by the World Meteorological Organization (WMO)
-  <https://community.wmo.int/en/activity-areas/climate-services/climate-products-and-initiatives/wmo-climatological-normals>
-
-```{python climatological-reference-period}
-crp_beg = 1961
-crp_end = 1990
-crp_lbl = "CRP-" + str(crp_beg) + "-" + str(crp_end)
-```
-
-#### ***Recent Climate Period***
-
-Average climate computed for a period of at least ten years starting on 1 January of a year ending with the digit 1 (WMO definition)
-
-```{python recent-climate-period}
-rcp_beg = 2011
-rcp_end = 2020
-rcp_lbl = "RCP-" + str(rcp_beg) + "-" + str(rcp_end)
-```
-
-#### Packages
+### ***Climate Periods***
 
 ```{python}
+#| label: reference_periods
 
+# Climatological Reference Period
+crp = "crp"
+crp_beg = 1961
+crp_end = 1990
+# Recent Climate Period
+rcp = "rcp"
+rcp_beg = 2011
+rcp_end = 2020
+```
+
+### ***Packages***
+
+```{python}
+#| label: packages
 import cdsapi
 import os
 from pathlib import Path
 from datetime import datetime
+import pandas as pd
+import time
 
 ```
 
 #### Paths
 
 ```{python paths}
-dir_download = "_data/01-era5-download/"
+#| label: paths
+dir_wr = "_data/01_era5_download/"
 ```
 
-#### Download ERA5 climate data
+### ***Functions***
 
-```{python download-ERA5-climate-data}
+Function to download ERA5 temperature and precipitation data.
+
+```{python}
+#| label: fn_download_climate_data
+
 def fn_download_climate_data(
     pth: str, 
     var: str,
     beg: int,
-    end: int):
+    end: int,
+    log_df: pd.DataFrame):
+
+    start_time = datetime.now()
 
     out = Path(pth)
     yrs = list(range(beg, end+1))
@@ -75,23 +81,36 @@ def fn_download_climate_data(
         str(out),
     )
 
-pth_t = dir_download + "crp-t-monthly.nc" 
-pth_p = dir_download + "crp-p-monthly.nc" 
-if not os.path.exists(pth_t) or not os.path.exists(pth_p):
-    fn_download_climate_data(pth_t, "t", crp_beg, crp_end)
-    fn_download_climate_data(pth_p, "p", crp_beg, crp_end)
+    file_name = os.path.basename(pth)
+    end_time = datetime.now()  
+    elapsed_time = end_time - start_time  
+    total_seconds = int(elapsed_time.total_seconds())
+    mm, ss = divmod(total_seconds, 60)
+    elapsed_str = f"{mm:02d}:{ss:02d}"
 
-pth_t = dir_download + "rcp-t-monthly.nc" 
-pth_p = dir_download + "rcp-p-monthly.nc"
-if not os.path.exists(pth_t) or not os.path.exists(pth_p):
-    fn_download_climate_data(pth_t, "t", rcp_beg, rcp_end)
-    fn_download_climate_data(pth_p, "p", rcp_beg, rcp_end)
+
+    # Append new row to log file
+    new_row = {
+        "File Name": file_name,
+        "Time (mm:ss)": elapsed_str
+    }
+    log_df = pd.concat([log_df, pd.DataFrame([new_row])], ignore_index=True)
+
+    return(log_df)
+
 ```
 
-#### Download ERA5 Land Sea Mask
+Function to download ERA5 land sea mask.
 
-```{python download-era5-land-sea-mask}
-def fn_download_land_sea_mask(pth: str):
+```{python}
+#| label: fn_download_land_sea_mask
+
+def fn_download_land_sea_mask(
+    pth: str,
+    log_df: pd.DataFrame):
+
+    start_time = datetime.now()
+
     out = Path(pth)
     c = cdsapi.Client() 
     c.retrieve(
@@ -109,9 +128,162 @@ def fn_download_land_sea_mask(pth: str):
         },
         str(out),
     )
+    
+    file_name = os.path.basename(pth)
+    end_time = datetime.now()  
+    elapsed_time = end_time - start_time  
+    total_seconds = int(elapsed_time.total_seconds())
+    mm, ss = divmod(total_seconds, 60)
+    elapsed_str = f"{mm:02d}:{ss:02d}"
 
-pth_lsm = dir_download + "land-sea-mask.nc"
-if not os.path.exists(pth_lsm) :
-    fn_download_land_sea_mask(pth_lsm)
+    # Append new row to log file
+    new_row = {
+        "File Name": file_name,
+        "Time (mm:ss)": elapsed_str
+    }
+    log_df = pd.concat([log_df, pd.DataFrame([new_row])], ignore_index=True)
+
+    return(log_df)
 ```
 
+### ***Data Acquisition***
+
+```{python}
+#| label: data_acquisition
+ 
+log_df = pd.DataFrame(columns=["File Name", "Time (mm:ss)"])
+
+pth = dir_wr + "crp_t_monthly.nc"
+log_df = fn_download_climate_data(pth, "t", crp_beg, crp_end, log_df)
+pth = dir_wr + "crp_p_monthly.nc" 
+log_df = fn_download_climate_data(pth, "p", crp_beg, crp_end, log_df)
+pth = dir_wr + "rcp_t_monthly.nc" 
+log_df = fn_download_climate_data(pth, "t", rcp_beg, rcp_end, log_df)
+pth = dir_wr + "rcp_p_monthly.nc"
+log_df = fn_download_climate_data(pth, "p", rcp_beg, rcp_end, log_df)
+
+pth = dir_wr + "land_sea_mask.nc"
+log_df = fn_download_land_sea_mask(pth, log_df)
+
+```
+
+### ***Download Summary***
+
+```{python}
+#| label: cp_cv_fn_df
+ 
+cp_cv_fn_df = pd.DataFrame(columns=["Climate Period", "Climate Variable", "File Name"])
+
+def add_record(df, cp, beg, end, cv):
+
+    if cv == "t":
+        cv_name = "Temperature"
+    else:
+        cv_name = "Precipitation"
+
+    new_row = {
+        "Climate Period": cp.upper() + "_"  + str(beg) + "_" + str(end),
+        "Climate Variable": cv_name,
+        "File Name": cp + "_" + cv + "_monthly.nc"
+    }
+    df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+
+    return (df)
+
+cp_cv_fn_df  = add_record(cp_cv_fn_df, crp, crp_beg, crp_end, "t")
+cp_cv_fn_df  = add_record(cp_cv_fn_df, crp, crp_beg, crp_end, "p")
+cp_cv_fn_df  = add_record(cp_cv_fn_df, rcp, rcp_beg, rcp_end, "t")
+cp_cv_fn_df  = add_record(cp_cv_fn_df, rcp, rcp_beg, rcp_end, "p")
+
+new_row = {
+    "Climate Period": "All Periods",
+    "Climate Variable": "NA",
+    "File Name": "land_sea_mask.nc"
+}
+cp_cv_fn_df = pd.concat([cp_cv_fn_df, pd.DataFrame([new_row])], ignore_index=True)
+
+
+```
+
+
+```{python}
+#| label: fn_directory_contents
+
+def fn_directory_contents_df(dir):
+    data =  []
+    for fname in os.listdir(dir):
+        # skip hidden files (starting with ".")
+        if fname.startswith("."):
+            continue
+        fpath = os.path.join(dir, fname)
+        if os.path.isfile(fpath):
+            size_mb = os.path.getsize(fpath) / (1024 * 1024)  # bytes → MB
+            mtime = os.path.getmtime(fpath)
+            #mod_date = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
+            mod_time = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
+            data.append({
+                "File Name": fname,
+                "Downloaded": mod_time,
+                "Size (MB)": round(size_mb, 2)
+            })
+    df = pd.DataFrame(data)
+
+    # Format Size (MB) with two decimals as string
+    df["Size (MB)"] = df["Size (MB)"].map("{:.2f}".format)
+
+    # Sort in order downloaded, then drop the modified time column
+    df = df.sort_values(by="Downloaded", ascending=True)
+    #df = df.drop(columns=["Last Modified Time"])
+
+    return df
+
+dir_df = fn_directory_contents_df(dir_wr)
+```
+
+```{python}
+#| label: merge_dfs
+
+merged_df = cp_cv_fn_df.merge(dir_df, on="File Name", how="left") \
+                       .merge(log_df, on="File Name", how="left") 
+
+# Reorder so "Climate Period" is first
+cols = ["Climate Period"] + [c for c in merged_df.columns if c != "Climate Period"]
+merged_df = merged_df[cols]
+
+```
+
+```{python}
+#| label: summary_df
+
+summary_df = (
+    merged_df.style
+        .hide(axis="index")   # removes row labels (index)
+        .set_table_styles([
+            # Climate Period
+            {"selector": ".col0, th.col0",
+            "props": [("min-width", "120px"), ("text-align", "left")]},
+
+            # File Name 
+            {"selector": ".col1, th.col1",
+            "props": [("min-width", "140px"), ("text-align", "left")]},
+
+            # Date
+            {"selector": ".col2, th.col2",
+            "props": [("min-width", "140px"), ("text-align", "left")]},
+
+            # Size (MB) 
+            {"selector": ".col3, th.col3",
+            "props": [("min-width", "80px"), ("text-align", "left")]},
+
+            # Size (MB) 
+            {"selector": ".col4, th.col4",
+            "props": [("min-width", "80px"), ("text-align", "right")]},
+
+            # Download Time 
+            {"selector": ".col5, th.col5",
+            "props": [("min-width", "100px"), ("text-align", "right")]}
+        ])
+)
+
+summary_df
+```

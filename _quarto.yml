@@ -3,22 +3,23 @@ project:
   output-dir: _output
 
 book:
-  title: "Global Climate Classification Change Analysis"
+  title: "Global Climate Classification Changes"
   subtitle: "Recent Period vs Climate Standard Reference Period"
   author: "Rick Forest"
   description: "Climate Classification methods used: Köppen Climate Classification (KCC), Trewartha  Climate Classification (TCC)"
-  abstract: "Download, transform, explore, classify and visualize ERA5 climate data to compare a Recent Climate Period Average (2011-2020) with the WMO Climate Standard Reference Period Normals (1961-1990)"
+  abstract: "Download, transform, explore, classify and visualize ERA5 climate data to compare a Recent Climate Period Average (2011-2020) with the WMO Climatological Standard Reference Period Normals (1961-1990)"
   reader-mode: true
   chapters:
     - index.qmd
     - 01_download_era5_data.qmd
     - 02_compute_climate_normals.qmd
-    - 03_reshape_climate_normals.qmd
-    - 04_derive_classification_metrics.qmd
+    - 03_derive_classification_metrics.qmd
+    - 04_apply_classification_systems.qmd
 
 execute:
   freeze: auto
   cache: true
+  cache_dir: _cache
   warning: false
   message: false
 
