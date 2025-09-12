@@ -1,6 +1,8 @@
 # Global Climate Classification Changes
 
- This project uses **ERA5 reanalysis climate data** to compare a *Recent Climate Period (2015–2024)* with the *WMO Climatological Standard Reference Period (1961-1990)*.  It will compute and visualize climate classification changes using the Köppen-Trewartha classification system.
+This project analyzes global climate classification changes by comparing climate data from a recent period (2015–2024) with the WMO Climatological Reference Period (1961–1990).
+
+The analysis will be done by applying the Köppen-Trewartha climate classification system to downloaded ERA5 climate data, analyzing and visualizing the climate classification shifts that have already occurred.
 
 Author: Rick Forest  
 
@@ -11,37 +13,20 @@ Author: Rick Forest
 
 ---
 
-## Overview
-
- The primary outputs of this project are:
-  + tables summarizing:
-    + recent and reference period temperature and precipitation data
-    + derived climate classification determinants for each period
-    + climate group classification results for each period
-    + classification shifts, comparing recent and reference periods
-  + global maps visualizing:
-    + reference period climate data, and changes in the recent period
-    + climate classification group results for each classification method
-    + classifications shifts, comparing recent and reference periods
-
-This project uses **ERA5 reanalysis climate data**.
-
----
-
 ## Workflow  
 
 This project uses a multi-step pipeline::
 
-1. **Download ERA5 Data** – 
-  + Download and save ERA5 climate reanalysis datasets.
-2. **Aggregate Climate Period Data** – 
-  + Compute climate period averages (temperature & precipitation).
-3. **Derive Classification Determinants** – 
-  + Derive aggregate seasonal/annual statistics required for classification.
-4. **Apply Köppen-Trewartha classification system**
-  + Apply Koppen-Trewartha classification definitions to all grid cells.  
-5. **Analyze Classification Changes**
-  + Identify and visualize classification changes between periods.  
+1. **Data Acquistion**
+  + Download and save ERA5 climate reanalysis gridded data.
+2. **Climate Aggregation**
+  + Convert multi-year monthly data into climatological averages for each grid cell.
+3. **Determinant Calculation**
+  + Calculate the classification determinants required by the Köppen–Trewartha system.
+4. **Climate Classification**
+  + Apply the Köppen–Trewartha sytem to assign each grid cell its climate group and type. 
+5. **Change Analysis**
+  + Quantify, analyze, and map the shifts in classification between the climate periods. 
 
 ---
 

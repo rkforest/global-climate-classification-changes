@@ -1,5 +1,5 @@
 ---
-title: "Derive Classification Determinants"
+title: "Determinant Calculation"
 ---
 
 The classification definitions for the Koppen-Trewartha classification are based on this analysis description:

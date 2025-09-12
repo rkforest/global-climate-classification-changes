@@ -1,5 +1,5 @@
 ---
-title: " Assign Classification Types"
+title: " Climate Classification"
 ---
 
 Use the classification determinants to calculate the climate type for each grid cell, using the Köppen-Trewartha classification system.

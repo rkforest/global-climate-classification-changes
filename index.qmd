@@ -9,26 +9,28 @@ The analysis will be done by applying the Köppen-Trewartha climate classificati
 
 ## Process
 
-1. **Download ERA5 Data**
-  + Download and save ERA5 climate reanalysis datasets.
-2. **Aggregate Climate Variables**
-  + Compute climate period averages (temperature & precipitation).
-3. **Derive Classification Determinants**
-  + Derive aggregate seasonal/annual statistics required for classification.
-4. **Assign Köppen-Trewartha Climate Types**
-  + Apply Köppen-Trewartha classification definitions to all grid cells.  
-5. **Analyze Classification Changes**
-  + Identify and visualize classification changes between periods.  
+1. **Data Acquisition**
+  + Download and save ERA5 climate reanalysis gridded data.
+2. **Climate Averaging**
+  + Aggregate multi-year monthly data into climatological averages for each grid cell.
+3. **Parameter Derivation**
+  + Calculate the classification parameters required by the Köppen–Trewartha system.
+4. **Climate Classification**
+  + Apply the Köppen–Trewartha sytem to assign each grid cell its climate group and type. 
+5. **Change Analysis**
+  + Quantify, analyze, and map the shifts in classification between the climate periods. 
 
-Use the sidebar to navigate, or read in order using the chapter links below.
+
 
 ## Modules
 
-- [01 — Download ERA5 Climate Data](01_download_data.qmd)  
-- [02 — Aggregate Climate Variables](02_aggregate_data.qmd)  
-- [03 — Derive Classification Determinants](03_derive_determinants.qmd)  
-- [04 — Assign Köppen-Trewartha Types](04_assign_types.qmd)  
-- [05 — Analyze Classification Changes](05_analyze_changes.qmd)  
+Use the sidebar to navigate, or read in order using the chapter links below.
+
+- [01 — Data Acquisition](01_data_acquisition.qmd)  
+- [02 — Climate Aggregation](02_climate_aggregation.qmd)  
+- [03 — Determinant Calculation](03_determinant_calculation.qmd)  
+- [04 — Climate Classification](04_climate_classification.qmd)  
+- [05 — Change Analysis](05_change_analysis.qmd)  
 
 ## Render
 

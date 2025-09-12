@@ -1,5 +1,5 @@
 ---
-title: "Analyze Classification Changes"
+title: "Change Analysis"
 ---
 
 ## Periods
@@ -118,13 +118,22 @@ fn_build_summary_table <- function(df) {
       pct_r = "RCP",
       pct_d = "Net Chg"
     ) |>
-    fmt_number(columns = c(mkm_c, mkm_g, mkm_l, mkm_r, mkm_d), decimals = 1) |>
-    fmt_number(columns = c(pct_c, pct_g, pct_l, pct_r, pct_d), decimals = 2) |>
+    fmt_number(
+      columns = c(mkm_c, mkm_g, mkm_l, mkm_r, mkm_d),
+      decimals = 1) |>
+    fmt_percent(
+      columns = c(pct_c, pct_g, pct_l, pct_r, pct_d),
+      decimals = 1 
+    ) |>
     grand_summary_rows(
-      columns = c(mkm_c, mkm_g, mkm_l, mkm_r, mkm_d,
-                  pct_c, pct_g, pct_l, pct_r, pct_d),
+      columns = c(mkm_c, mkm_g, mkm_l, mkm_r, mkm_d),
       fns = list("Total" = ~ sum(.)),
-      fmt = list(~ fmt_number(.x, decimals = 2))
+      fmt = list(~ fmt_number(.x, decimals = 1)) 
+    ) |>
+    grand_summary_rows(
+      columns = c(pct_c, pct_g, pct_l, pct_r, pct_d),
+      fns = list("Total" = ~ sum(.)),
+      fmt = list(~ fmt_percent(.x, decimals = 1)) 
     ) |>
     tab_footnote(
       footnote = paste("Climatological Reference Period ", crp_beg, "-", crp_end, sep = ""),
@@ -134,32 +143,29 @@ fn_build_summary_table <- function(df) {
       footnote = paste("Recent Climate Period ", rcp_beg, "-", rcp_end, sep = ""),
       locations = cells_column_labels(columns = c(mkm_r, pct_r))
     ) |>
-
     tab_style(
       style = cell_fill(color = "#e6f0fa"),
-      locations = cells_body(columns = pct_g, rows = pct_g > 1)
+      locations = cells_body(columns = pct_g, rows = pct_g > .01)
     ) |>
     tab_style(
       style = cell_fill(color = "#c5d6e9"),
-      locations = cells_body(columns = pct_g, rows = pct_g > 2)
+      locations = cells_body(columns = pct_g, rows = pct_g > .02)
     ) |>
-
     tab_style(
       style = cell_fill(color = "#fffad5"),
-      locations = cells_body(columns = pct_l, rows = pct_l < -1)
+      locations = cells_body(columns = pct_l, rows = pct_l < -.01)
     ) |>
-        tab_style(
+    tab_style(
       style = cell_fill(color = "#fff7bc"),
-      locations = cells_body(columns = pct_l, rows = pct_l < -2)
+      locations = cells_body(columns = pct_l, rows = pct_l < -.02)
     ) |>
-
     tab_style(
       style = cell_fill(color = "#c5d6e9"),
-      locations = cells_body(columns = pct_d, rows = pct_d > 2)
+      locations = cells_body(columns = pct_d, rows = pct_d > .02)
     ) |>
     tab_style(
       style = cell_fill(color = "#fff7bc"),
-      locations = cells_body(columns = pct_d, rows = pct_d < -1)
+      locations = cells_body(columns = pct_d, rows = pct_d < -.01)
     )
 
   return(tbl)
@@ -183,11 +189,6 @@ fn_build_detail_table <- function(df, subtitle) {
       mkm = "Area (Mkm²)",
       pct = "Land Area %",
     ) |>
-    # cols_width(
-    #     col_a ~ px(150), # Set col_a to 150 pixels
-    #     col_b ~ pct(10), # Set col_b to 10% of table width
-    #     everything() ~ px(200) # Set all other columns to 200 pixels
-    # ) |>
     fmt_number(
       columns = mkm,
       decimals = 1
@@ -196,20 +197,29 @@ fn_build_detail_table <- function(df, subtitle) {
       columns = pct,
       decimals = 2 
     ) |>
-    #fmt_number(columns = c(pct), decimals = 2) |>
+    # cols_width(
+    #     col_a ~ px(150), # Set col_a to 150 pixels
+    #     col_b ~ pct(10), # Set col_b to 10% of table width
+    #     everything() ~ px(200) # Set all other columns to 200 pixels
+    # ) |>
     grand_summary_rows(
-      columns = c(mkm,
-                  pct),
+      columns = mkm,
       fns = list("Total" = ~ sum(.)),
-      fmt = list(~ fmt_number(.x, decimals = 2))
+      fmt = list(~ fmt_number(.x, decimals = 1))
     ) |>
+    grand_summary_rows(
+      columns = pct,
+      fns = list("Total" = ~ sum(.)),
+      fmt = list(~ fmt_percent(.x, decimals = 2)) 
+    ) |>
+
     tab_style(
       style = cell_fill(color = "#e6f0fa"),
-      locations = cells_body(columns = pct, rows = pct > 1)
+      locations = cells_body(columns = pct, rows = pct > .01)
     ) |>
     tab_style(
       style = cell_fill(color = "#c5d6e9"),
-      locations = cells_body(columns = pct, rows = pct > 2)
+      locations = cells_body(columns = pct, rows = pct > .02)
     )
 
   return(tbl)
@@ -299,7 +309,8 @@ tbl_df <- join_df  |>
     select(cg,
       mkm_c, mkm_g, mkm_l, mkm_r, mkm_d,
       pct_c, pct_g, pct_l, pct_r, pct_d
-    )
+    ) |> 
+    mutate(across(c(pct_c, pct_g, pct_l, pct_r, pct_d), ~ .x / 100))
 
 # create gt table
 t1 <- fn_build_summary_table(tbl_df)
