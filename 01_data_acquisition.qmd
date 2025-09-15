@@ -4,40 +4,64 @@ engine: jupyter
 jupyter: myproj
 ---
 
-Download and save ERA5 climate reanalysis datasets using the Climate Data Store CDSAPI:  <https://cds.climate.copernicus.eu/how-to-api>.
+Download and save ERA5 climate reanalysis datasets using the Climate Data Store CDSAPI:  <https://cds.climate.copernicus.eu/how-to-api>. 
 
-## ***Periods***
+The download process is done using **Python**.
+
+It will use packages:
+
+  * **cdsapi** to setup and initiate the download request using the parameters stored locally in a .cdsapirc file (created during the Climate Data Store setup process)
+  * **pandas** to create, update and display a download log showing the file name, ERA5 variable name, file size, and elapsed download time for each file downloaded
+
+## Initialization
+
+### Periods
 ```{python}
-#| label: climate periods
-# Climatological Reference Period
-crp = "CRP"
+#| label: periods
+
+# Climatological Reference Period (crp)
 crp_beg = 1961
 crp_end = 1990
-# Recent Climate Period
-rcp = "RCP"
-rcp_beg = 2015
-rcp_end = 2024
+
+# Decadal Climate Period (dcp)
+dcp_beg = 2015
+dcp_end = 2024
+
 ```
 
-## ***Packages***
+### Packages
 ```{python}
 #| label: packages
+
+# Primary packages
 import cdsapi
+import pandas as pd
+
+# Utility packages
 import os
 from pathlib import Path
 from datetime import datetime
-import pandas as pd
-import time
 
 ```
 
-## ***Directories***
+### Directories
 ```{python}
 #| label: directories
-dir_wr = "data/01_downloaded_data/"
+data_acquisition_dir = "data/01_data_acquisition/"
 ```
 
-## ***Functions***
+### Log
+```{python}
+#| label: log
+log_df = pd.DataFrame({
+    "file_name": pd.Series(dtype="string"),
+    "variable_name": pd.Series(dtype="string"),
+    "file_size": pd.Series(dtype="float"),
+    "elapsed_mmss": pd.Series(dtype="string")
+})
+```
+
+## Functions
 
 Function to download ERA5 temperature and precipitation data.
 
@@ -62,7 +86,7 @@ def fn_download_climate_data(
     elif var == "p":
         variable_name = "total_precipitation"
 
-    c = cdsapi.Client()  # will read ~/.cdsapirc
+    c = cdsapi.Client()
 
     c.retrieve(
         "reanalysis-era5-single-levels-monthly-means",
@@ -78,18 +102,22 @@ def fn_download_climate_data(
     )
 
     file_name = os.path.basename(pth)
+    size_mb = round(os.path.getsize(pth) / (1024 * 1024),2)
+
     end_time = datetime.now()  
     elapsed_time = end_time - start_time  
     total_seconds = int(elapsed_time.total_seconds())
     mm, ss = divmod(total_seconds, 60)
-    elapsed_str = f"{mm:02d}:{ss:02d}"
-
+    elapsed_mmss = f"{mm:02d}:{ss:02d}"
 
     # Append new row to log file
     new_row = {
-        "File Name": file_name,
-        "Time (mm:ss)": elapsed_str
+        "file_name": file_name,
+        "variable_name": variable_name,
+        "file_size": size_mb,
+        "elapsed_mmss": elapsed_mmss
     }
+
     log_df = pd.concat([log_df, pd.DataFrame([new_row])], ignore_index=True)
 
     return(log_df)
@@ -108,12 +136,14 @@ def fn_download_land_sea_mask(
     start_time = datetime.now()
 
     out = Path(pth)
+    variable_name = "land_sea_mask"
+
     c = cdsapi.Client() 
     c.retrieve(
         "reanalysis-era5-single-levels",
         {
             "product_type": "reanalysis",
-            "variable": "land_sea_mask",
+            "variable": variable_name,
             "year": "2000",
             "month": "01",
             "day": "01",
@@ -126,162 +156,87 @@ def fn_download_land_sea_mask(
     )
     
     file_name = os.path.basename(pth)
+    size_mb = round(os.path.getsize(pth) / (1024 * 1024),2)
+
     end_time = datetime.now()  
     elapsed_time = end_time - start_time  
     total_seconds = int(elapsed_time.total_seconds())
     mm, ss = divmod(total_seconds, 60)
-    elapsed_str = f"{mm:02d}:{ss:02d}"
+    elapsed_mmss = f"{mm:02d}:{ss:02d}"
 
     # Append new row to log file
     new_row = {
-        "File Name": file_name,
-        "Time (mm:ss)": elapsed_str
+        "file_name": file_name,
+        "variable_name": variable_name,
+        "file_size": size_mb,
+        "elapsed_mmss": elapsed_mmss
     }
+
     log_df = pd.concat([log_df, pd.DataFrame([new_row])], ignore_index=True)
 
     return(log_df)
 ```
 
-## ***Main Process***
+## Acquire Data
 
 ```{python}
-#| label: main_process
- 
-log_df = pd.DataFrame(columns=["File Name", "Time (mm:ss)"])
+#| label: acquire_data
 
-pth = dir_wr + "crp_downloaded_t.nc"
+fil = "t_avg_" + str(crp_beg) + "-" + str(crp_end) + "_era5.nc"
+dir = data_acquisition_dir
+pth = dir + fil
 log_df = fn_download_climate_data(pth, "t", crp_beg, crp_end, log_df)
-pth = dir_wr + "crp_downloaded_p.nc" 
-log_df = fn_download_climate_data(pth, "p", crp_beg, crp_end, log_df)
-pth = dir_wr + "rcp_downloaded_t.nc" 
-log_df = fn_download_climate_data(pth, "t", rcp_beg, rcp_end, log_df)
-pth = dir_wr + "rcp_downloaded_p.nc"
-log_df = fn_download_climate_data(pth, "p", rcp_beg, rcp_end, log_df)
 
-pth = dir_wr + "land_sea_mask.nc"
+fil = "p_avg_" + str(crp_beg) + "-" + str(crp_end) + "_era5.nc"
+dir = data_acquisition_dir
+pth = dir + fil
+log_df = fn_download_climate_data(pth, "p", crp_beg, crp_end, log_df)
+
+fil = "t_avg_" + str(dcp_beg) + "-" + str(dcp_end) + "_era5.nc"
+dir = data_acquisition_dir
+pth = dir + fil
+log_df = fn_download_climate_data(pth, "t", dcp_beg, dcp_end, log_df)
+
+fil = "p_avg_" + str(dcp_beg) + "-" + str(dcp_end) + "_era5.nc"
+dir = data_acquisition_dir
+pth = dir + fil
+log_df = fn_download_climate_data(pth, "p", dcp_beg, dcp_end, log_df)
+
+fil = "land_sea_mask_era5.nc"
+dir = data_acquisition_dir
+pth = dir + fil
 log_df = fn_download_land_sea_mask(pth, log_df)
 
 ```
 
-## ***Summary***
+## Display Log
 
 ```{python}
-#| label: build_summary
- 
-cp_cv_fn_df = pd.DataFrame(columns=["Climate Period", "Climate Variable", "File Name"])
+#| label: display_log
 
-def add_record(df, cp, beg, end, cv):
+log_df = log_df.rename(columns={
+    "file_name": "File Name",
+    "variable_name": "ERA5 Variable Name",
+    "file_size": "File Size (MB)",
+    "elapsed_mmss": "Time (mm:ss)"
+})
 
-    if cv == "t":
-        cv_name = "Temperature"
-    else:
-        cv_name = "Precipitation"
-
-    new_row = {
-        "Climate Period": cp + "_"  + str(beg) + "_" + str(end),
-        "Climate Variable": cv_name,
-        "File Name": cp.lower() + "_downloaded_" + cv + ".nc"
-    }
-    df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-
-    return (df)
-
-cp_cv_fn_df  = add_record(cp_cv_fn_df, crp, crp_beg, crp_end, "t")
-cp_cv_fn_df  = add_record(cp_cv_fn_df, crp, crp_beg, crp_end, "p")
-cp_cv_fn_df  = add_record(cp_cv_fn_df, rcp, rcp_beg, rcp_end, "t")
-cp_cv_fn_df  = add_record(cp_cv_fn_df, rcp, rcp_beg, rcp_end, "p")
-
-new_row = {
-    "Climate Period": "All Periods",
-    "Climate Variable": "NA",
-    "File Name": "land_sea_mask.nc"
-}
-cp_cv_fn_df = pd.concat([cp_cv_fn_df, pd.DataFrame([new_row])], ignore_index=True)
-
-```
-
-
-```{python}
-#| label: directory_contents
-
-def fn_directory_contents_df(dir):
-    data =  []
-    for fname in os.listdir(dir):
-        # skip hidden files (starting with ".")
-        if fname.startswith("."):
-            continue
-        fpath = os.path.join(dir, fname)
-        if os.path.isfile(fpath):
-            size_mb = os.path.getsize(fpath) / (1024 * 1024)  # bytes → MB
-            mtime = os.path.getmtime(fpath)
-            #mod_date = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
-            mod_time = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
-            data.append({
-                "File Name": fname,
-                "Downloaded At": mod_time,
-                "Size (MB)": round(size_mb, 2)
-            })
-    df = pd.DataFrame(data)
-
-    # Format Size (MB) with two decimals as string
-    df["Size (MB)"] = df["Size (MB)"].map("{:.2f}".format)
-
-    # Sort in order downloaded, then drop the modified time column
-    df = df.sort_values(by="Downloaded At", ascending=True)
-    #df = df.drop(columns=["Last Modified Time"])
-
-    return df
-
-dir_df = fn_directory_contents_df(dir_wr)
-```
-
-```{python}
-#| label: merge_dfs
-
-merged_df = cp_cv_fn_df.merge(dir_df, on="File Name", how="left") \
-                       .merge(log_df, on="File Name", how="left") 
-
-# Reorder so "Climate Period" is first
-cols = ["Climate Period"] + [c for c in merged_df.columns if c != "Climate Period"]
-merged_df = merged_df[cols]
-
-```
-
-```{python}
-#| label: summary_df
-#| fig-width: 10
-#| fig-aspect: .62  
-#| out-width: 100%
-
-summary_df = (
-    merged_df.style
-        .hide(axis="index")   # removes row labels (index)
+# use pandas styler to set column widths and alignment
+log_styled_df = (
+    log_df.style
+        .hide(axis="index")   # hides row index column
         .set_table_styles([
-            # Climate Period
             {"selector": ".col0, th.col0",
-            "props": [("min-width", "110px"), ("text-align", "left")]},
-
-            # Climate Variable 
+             "props": [("min-width", "190px"), ("text-align", "left")]},
             {"selector": ".col1, th.col1",
-            "props": [("min-width", "130px"), ("text-align", "left")]},
-
-            # File Name
+             "props": [("min-width", "140px"), ("text-align", "left")]},
             {"selector": ".col2, th.col2",
-            "props": [("min-width", "160px"), ("text-align", "left")]},
-
-            # Downloaded 
+             "props": [("min-width", "110px"), ("text-align", "right")]},
             {"selector": ".col3, th.col3",
-            "props": [("min-width", "140px"), ("text-align", "left")]},
-
-            # Size (MB) 
-            {"selector": ".col4, th.col4",
-            "props": [("min-width", "70px"), ("text-align", "right")]},
-
-            # Time  (mm:ss)
-            {"selector": ".col5, th.col5",
-            "props": [("min-width", "80px"), ("text-align", "right")]}
+             "props": [("min-width", "110px"), ("text-align", "right")]}
         ])
+        .format({"File Size (MB)": "{:.2f}"})   # show 2 decimal places
 )
 
-summary_df
+log_styled_df
 ```

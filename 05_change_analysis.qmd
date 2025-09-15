@@ -11,10 +11,10 @@ crp_beg <- 1961
 crp_end <- 1990
 crp_lbl <- paste("CRP ", crp_beg, "-", crp_end, sep = "")
 # Recent Climate Period
-rcp = "rcp"
-rcp_beg <- 2015
-rcp_end <- 2024
-rcp_lbl <- paste("RCP ", rcp_beg, "-", rcp_end, sep = "")
+dcp = "dcp"
+dcp_beg <- 2015
+dcp_end <- 2024
+dcp_lbl <- paste("DCP ", dcp_beg, "-", dcp_end, sep = "")
 ```
 
 ## Packages
@@ -34,8 +34,9 @@ suppressPackageStartupMessages({
 ```{r}
 #| label: directories
 dir_rf <- "data/00_reference/"
-dir_rd <- "data/04_classified_data/"
+climate_classification_dir <- "data/04_climate_classification/"
 ```
+
 
 ## Palette
 ```{r}
@@ -67,7 +68,7 @@ coastline_sf <- st_read(pth, quiet=TRUE)
 ## Import
 ```{r}
 #| label: import
-pth <- paste(dir_rd, "ktc_grp_classification.gpkg", sep = "")
+pth <- paste(climate_classification_dir, "ktc_grp_classification.gpkg", sep = "")
 import_sf <- st_read(pth, quiet=TRUE)
 
 import_sf <- import_sf |>  
@@ -109,13 +110,13 @@ fn_build_summary_table <- function(df) {
       mkm_c = "CRP",
       mkm_g = "Gain",
       mkm_l = "Loss",
-      mkm_r = "RCP",
+      mkm_r = "DCP",
       mkm_d = "Net Chg",
 
       pct_c = "CRP",
       pct_g = "Gain",
       pct_l = "Loss",
-      pct_r = "RCP",
+      pct_r = "DCP",
       pct_d = "Net Chg"
     ) |>
     fmt_number(
@@ -140,7 +141,7 @@ fn_build_summary_table <- function(df) {
       locations = cells_column_labels(columns = c(mkm_c, pct_c))
     ) |>
     tab_footnote(
-      footnote = paste("Recent Climate Period ", rcp_beg, "-", rcp_end, sep = ""),
+      footnote = paste("Recent Climate Period ", dcp_beg, "-", dcp_end, sep = ""),
       locations = cells_column_labels(columns = c(mkm_r, pct_r))
     ) |>
     tab_style(
@@ -238,7 +239,7 @@ fn_build_global_map <- function(plot_data, palette, cp) {
     coord_sf(crs = rbn_prj) +
     guides(color = guide_legend(override.aes = list(size = 4 ))) # legend point size
 
-  if (cp == "rcp") {
+  if (cp == "dcp") {
     p <- p +  
       labs(
         title = "Climate Group Classification Changes ",
@@ -266,7 +267,7 @@ df1 <- import_df |>
     .by = c(cgrp)) |>
   rename(cg = cgrp)
 
-# summmarize rcp group mkm and pct
+# summmarize dcp group mkm and pct
 df2 <- import_df |>
   summarize(
     mkm_r = sum(mkm),
@@ -274,7 +275,7 @@ df2 <- import_df |>
     .by = c(rgrp)) |>
   rename(cg = rgrp)
 
-# join crp and rcp and calculate difference
+# join crp and dcp and calculate difference
 join_df <- df1 |> 
   inner_join(df2, by = "cg") |>
   mutate(mkm_d = mkm_r - mkm_c) |>
@@ -321,11 +322,11 @@ t1 <- fn_build_summary_table(tbl_df)
 ```{r}
 #| label: summary_maps
 
-# Build rcp map
+# Build dcp map
 plot_data <- shifts_sf |>
   select(rgrp) |>
   rename(grp = rgrp)
-p1 <- fn_build_global_map (plot_data, grp_palette, "rcp")
+p1 <- fn_build_global_map (plot_data, grp_palette, "dcp")
 
 # build crp map
 plot_data <- shifts_sf |>
@@ -385,7 +386,7 @@ fn_detail_analysis <- function(shifts_df, shifts_sf, grp_palette, g) {
   select(rgrp) |>
   rename(grp = rgrp)
 
-  p1 <- fn_build_global_map(g_new_sf, grp_palette, "rcp")
+  p1 <- fn_build_global_map(g_new_sf, grp_palette, "dcp")
 
   g_old_sf <- shifts_sf |> 
   filter(rgrp == g) |>

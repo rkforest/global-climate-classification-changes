@@ -4,22 +4,23 @@ title: " Climate Classification"
 
 Use the classification determinants to calculate the climate type for each grid cell, using the Köppen-Trewartha classification system.
 
-## ***Periods***
+## Periods
 ```{r}
 #| label: periods
-# Climatological Reference Period
-crp = "crp"
+
+# Climatological Reference Period (crp)
 crp_beg <- 1961
 crp_end <- 1990
-crp_lbl <- paste("CRP ", crp_beg, "-", crp_end, sep = "")
-# Recent Climate Period
-rcp = "rcp"
-rcp_beg <- 2015
-rcp_end <- 2024
-rcp_lbl <- paste("RCP ", rcp_beg, "-", rcp_end, sep = "")
+crp_lbl <-  paste0("CRP ",crp_beg,"-",crp_end)
+
+# Decadal Climate Period (dcp)
+dcp_beg <- 2015
+dcp_end <- 2024
+dcp_lbl <-  paste0("DCP ",dcp_beg,"-",dcp_end)
+
 ```
 
-## ***Packages***
+## Packages
 ```{r}
 #| label: packages
 suppressPackageStartupMessages({
@@ -32,15 +33,16 @@ suppressPackageStartupMessages({
 })
 ```
 
-## ***Directories***
+## Directories
 ```{r}
 #| label: directories
 dir_rf <- "data/00_reference/"
-dir_rd <- "data/03_transformed_data/"
-dir_wr <- "data/04_classified_data/"
+
+determinant_calculation_dir <- "data/03_determinant_calculation/"
+climate_classification_dir <- "data/04_climate_classification/"
 ```
 
-## ***Palettes***
+## Palettes
 
 ```{r}
 #| label: palettes
@@ -63,13 +65,13 @@ ktc_typ_palette_str <- setNames(
 
 ```
 
-## ***Projections***
+## Projections
 ```{r}
 #| label: projections
 rbn_prj <- "ESRI:54030"
 ```
 
-## ***Coastline***
+## Coastline
 ```{r}
 #| label: coastline
 dir <- dir_rf
@@ -78,17 +80,17 @@ pth <- paste(dir, fil, sep = "")
 coastline_sf <- st_read(pth, quiet=TRUE)
 ```
 
-## ***Import***
+## Import
 ```{r}
 #| label: determinants
-pth <- paste(dir_rd, "crp_determinants.parquet", sep = "")
+pth <- paste(determinant_calculation_dir, "crp_determinants.parquet", sep = "")
 crp_determinants_df <- read_parquet(pth) 
 
-pth <- paste(dir_rd, "rcp_determinants.parquet", sep = "")
-rcp_determinants_df <- read_parquet(pth) 
+pth <- paste(determinant_calculation_dir, "dcp_determinants.parquet", sep = "")
+dcp_determinants_df <- read_parquet(pth) 
 ```
 
-## ***Functions***
+## Functions
 
 ### Assign KTC Group
 
@@ -123,6 +125,7 @@ fn_assign_typ <- function(df) {
       cls = case_when(
         grp == "A" & (pl60 <= 2) ~ "r",
         grp == "A" ~ "w",
+
         grp == "B" & (ptot < athr/2) ~ "W",
         grp == "B" ~ "S",
 
@@ -132,6 +135,7 @@ fn_assign_typ <- function(df) {
 
         grp == "D" & (tmin > 0) ~ "o",
         grp == "D" ~ "c",
+        
         grp == "F" & (tmax > 0) ~ "t",
         grp == "F" ~ "i",
         TRUE ~ ""
@@ -296,7 +300,7 @@ fn_build_summary_table_v3 <- function(df, cp, id, id_lbl) {
 }
 
 ```
-## ***Main Process***
+## Main Process
 
 ```{r}
 #| label: main_process
@@ -306,28 +310,28 @@ fn_build_summary_table_v3 <- function(df, cp, id, id_lbl) {
 crp_grp_df <- fn_assign_grp(crp_determinants_df)
 crp_typ_df <- fn_assign_typ(crp_grp_df)
 
-rcp_grp_df <- fn_assign_grp(rcp_determinants_df)
-rcp_typ_df <- fn_assign_typ(rcp_grp_df)
+dcp_grp_df <- fn_assign_grp(dcp_determinants_df)
+dcp_typ_df <- fn_assign_typ(dcp_grp_df)
 
 # Step 2 select
 
 crp_grp_df <- crp_grp_df |> select(lat,lon,area,lsm,grp)
 crp_typ_df <- crp_typ_df |> select(lat,lon,area,lsm,typ)
 
-rcp_grp_df <- rcp_grp_df |> select(lat,lon,area,lsm,grp)
-rcp_typ_df <- rcp_typ_df |> select(lat,lon,area,lsm,typ)
+dcp_grp_df <- dcp_grp_df |> select(lat,lon,area,lsm,grp)
+dcp_typ_df <- dcp_typ_df |> select(lat,lon,area,lsm,typ)
 
 # Step 3 join
 
 ktc_grp_df <- crp_grp_df %>% 
-  left_join(rcp_grp_df , by = c("lon", "lat", "lsm")) |>
+  left_join(dcp_grp_df , by = c("lon", "lat", "lsm")) |>
   rename(cgrp = grp.x, rgrp = grp.y, area = area.x) |>
   select(lon, lat, lsm, area, cgrp, rgrp) |>
   mutate(cgrp = factor(cgrp, levels = ktc_grp_palette_df$grp)) |>
   mutate(rgrp = factor(rgrp, levels = ktc_grp_palette_df$grp))
 
 ktc_typ_df <- crp_typ_df %>% 
-  left_join(rcp_typ_df , by = c("lon", "lat", "lsm")) |>
+  left_join(dcp_typ_df , by = c("lon", "lat", "lsm")) |>
   rename(ctyp = typ.x, rtyp = typ.y, area = area.x) |>
   select(lon, lat, lsm, area, ctyp, rtyp) |>
   mutate(ctyp = factor(ctyp, levels = ktc_typ_palette_df$typ)) |>
@@ -388,9 +392,9 @@ crp_typ_tbl_df <- ktc_typ_cmb_sf |>
   )|>
   arrange(typ)
 
-# Step 7 rcp summary df
+# Step 7 dcp summary df
 
-rcp_grp_tbl_df <- ktc_grp_cmb_sf |>
+dcp_grp_tbl_df <- ktc_grp_cmb_sf |>
   st_drop_geometry() |>
   rename(grp = rgrp) |>
   select(grp, mkm, pct) |>
@@ -401,7 +405,7 @@ rcp_grp_tbl_df <- ktc_grp_cmb_sf |>
   )|>
   arrange(grp)
 
-rcp_typ_tbl_df <- ktc_typ_cmb_sf |>
+dcp_typ_tbl_df <- ktc_typ_cmb_sf |>
   st_drop_geometry() |>
   rename(typ = rtyp) |>
   select(typ, mkm, pct) |>
@@ -414,18 +418,18 @@ rcp_typ_tbl_df <- ktc_typ_cmb_sf |>
 
 ```
 
-## ***Save***
+## Save
 
 ```{r}
 #| label: save
  
 fil <- "ktc_grp_classification.gpkg"
-dir <- dir_wr
+dir <- climate_classification_dir
 pth <- paste0(dir,fil)
 st_write(ktc_grp_cmb_sf, pth, delete_dsn = TRUE, quiet = TRUE)
 
 fil <- "ktc_typ_classification.gpkg"
-dir <- dir_wr
+dir <- climate_classification_dir
 pth <- paste0(dir,fil)
 st_write(ktc_typ_cmb_sf, pth, delete_dsn = TRUE, quiet = TRUE)
 
@@ -449,6 +453,7 @@ dfj <- df1 |>
 tbl_df1_v1 <- dfj |> select(grp, lbl, mkm, pct)
 tbl_df1_v2 <- dfj |> select(grp, lbl, pct)
 #tbl_df1_v3 <- dfj |> select(grp, pct)
+
 
 crp_grp_tbl_v1 <- fn_build_summary_table_v1(tbl_df1_v1, crp_lbl, "grp", "Group")
 crp_grp_tbl_v2 <- fn_build_summary_table_v2(tbl_df1_v2, crp_lbl, "grp", "Group")
@@ -544,16 +549,16 @@ wrap_table(crp_typ_tbl_v3, panel = "full", space = "fixed") + crp_typ_map
 
 ```
 
-## RCP Classification Summary
+## DCP Classification Summary
 
-### RCP Tables
+### DCP Tables
 
 #### Group
 
 ```{r}
-#| label: rcp_grp_table
+#| label: dcp_grp_table
 
-df1 <- rcp_grp_tbl_df
+df1 <- dcp_grp_tbl_df
 df2 <- ktc_grp_palette_df |> select(grp, lbl)
 dfj <- df1 |>
    left_join(df2, by = "grp") |>
@@ -563,20 +568,20 @@ tbl_v1 <- dfj |> select(grp, lbl, mkm, pct)
 tbl_v2 <- dfj |> select(grp, lbl, pct)
 # tbl_v3 <- dfj |> select(grp, pct)
 
-rcp_grp_tbl_v1 <- fn_build_summary_table_v1(tbl_v1, rcp_lbl, "grp", "Group")
-rcp_grp_tbl_v2 <- fn_build_summary_table_v2(tbl_v2, rcp_lbl, "grp", "Group")
-# rcp_grp_tbl_v3 <- fn_build_summary_table_v3(tbl_v3, rcp_lbl, "grp", "Group")
+dcp_grp_tbl_v1 <- fn_build_summary_table_v1(tbl_v1, dcp_lbl, "grp", "Group")
+dcp_grp_tbl_v2 <- fn_build_summary_table_v2(tbl_v2, dcp_lbl, "grp", "Group")
+# dcp_grp_tbl_v3 <- fn_build_summary_table_v3(tbl_v3, dcp_lbl, "grp", "Group")
 
-rcp_grp_tbl_v1
+dcp_grp_tbl_v1
 
 ```
 
 #### Type
 
 ```{r}
-#| label: rcp_typ_table
+#| label: dcp_typ_table
 
-df1 <- rcp_typ_tbl_df
+df1 <- dcp_typ_tbl_df
 df2 <- ktc_typ_palette_df |> select(typ, lbl)
 
 dfj <- df1 |>
@@ -587,20 +592,20 @@ tbl_v1 <- dfj |> select(typ, lbl, mkm, pct)
 #tbl_v2 <- dfj |> select(typ, lbl, pct)
 tbl_v3 <- dfj |> select(typ, pct)
 
-rcp_typ_tbl_v1 <- fn_build_summary_table_v1(tbl_v1, rcp_lbl, "typ", "Type")
-#rcp_typ_tbl_v2 <- fn_build_summary_table_v2(tbl_v2, rcp_lbl, "typ", "Type")
-rcp_typ_tbl_v3 <- fn_build_summary_table_v3(tbl_v3, rcp_lbl, "typ", "Type")
+dcp_typ_tbl_v1 <- fn_build_summary_table_v1(tbl_v1, dcp_lbl, "typ", "Type")
+#dcp_typ_tbl_v2 <- fn_build_summary_table_v2(tbl_v2, dcp_lbl, "typ", "Type")
+dcp_typ_tbl_v3 <- fn_build_summary_table_v3(tbl_v3, dcp_lbl, "typ", "Type")
 
-rcp_typ_tbl_v1 
+dcp_typ_tbl_v1 
 
 ```
 
-### RCP Maps
+### DCP Maps
 
 #### Group
 
 ```{r}
-#| label: rcp_grp_map
+#| label: dcp_grp_map
 #| fig-width: 10
 #| fig-aspect: .7   
 #| out-width: 100%
@@ -611,14 +616,14 @@ plot_data <- ktc_grp_cmb_sf |>
 plot_data <- plot_data |>
   mutate(grp = factor(grp, levels = ktc_grp_levels))
 plot_palette_str <- ktc_grp_palette_str[levels(plot_data$grp)]
-rcp_grp_map <- fn_create_grp_map(plot_data, plot_palette_str, rcp_lbl)
-rcp_grp_map
+dcp_grp_map <- fn_create_grp_map(plot_data, plot_palette_str, dcp_lbl)
+dcp_grp_map
 ```
 
 #### Type
 
 ```{r}
-#| label: rcp_typ_map
+#| label: dcp_typ_map
 #| fig-width: 10
 #| fig-aspect: .7   
 #| out-width: 100%
@@ -629,32 +634,32 @@ plot_data <- ktc_typ_cmb_sf |>
 plot_data <- plot_data |>
   mutate(typ = factor(typ, levels = ktc_typ_levels))
 plot_palette_str <- ktc_typ_palette_str[levels(plot_data$typ)]
-rcp_typ_map <- fn_create_typ_map(plot_data, plot_palette_str, rcp_lbl)
-rcp_typ_map
+dcp_typ_map <- fn_create_typ_map(plot_data, plot_palette_str, dcp_lbl)
+dcp_typ_map
 ```
 
-### RCP Patchwork
+### DCP Patchwork
 
 #### Group
 
 ```{r}
-#| label: rcp_grp_patchwork
+#| label: dcp_grp_patchwork
 #| fig-width: 10
 #| fig-aspect: .7   
 #| out-width: 100%
 
-wrap_table(rcp_grp_tbl_v2, panel = "full", space = "fixed") + rcp_grp_map
+wrap_table(dcp_grp_tbl_v2, panel = "full", space = "fixed") + dcp_grp_map
 
 ```
 
 #### Type
 
 ```{r}
-#| label: rcp_typ_patchwork
+#| label: dcp_typ_patchwork
 #| fig-width: 10
 #| fig-aspect: .7   
 #| out-width: 100%
 
-wrap_table(rcp_typ_tbl_v3, panel = "full", space = "fixed") + rcp_typ_map
+wrap_table(dcp_typ_tbl_v3, panel = "full", space = "fixed") + dcp_typ_map
 
 ```

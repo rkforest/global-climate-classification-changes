@@ -4,45 +4,79 @@ engine: jupyter
 jupyter: myproj
 ---
 
-Aggregate temperature and precipitation data for each climate period by longitude, latitude and month number producing a single value per grid cell and month number.  Reshape data from long form to wide form (one row per grid cell with each monthly value in a separate column) to facillite the deriving of classification determinants.
+Aggregate temperature and precipitation data for each climate period producing a single value for each longitude, latitude and month number combination.  Reshape data from long form to wide form: one row per grid cell with each monthly value in a separate column.  This will facilitate the calculation of climate classification determinants.
 
-## ***Periods***
+The aggregation process is done using **Python**.
+
+It will use packages:
+
+  * **xarray** to import the netcdf files using the **h5netcdf** engine and with the **auto** chunk option to reduce memory usage
+  * **pandas** to convert the xarray dataset to a data frame, transform the data, produce climate period aggregates, and save the results. It will also create, update and display a log file showing data counts before and after the aggregation
+  * **numpy** to calculate grid cell areas using mathematical formulas based on latitude and longitude
+
+## Initialization
+
+### Periods
 ```{python}
-#| label: climate_periods
-# Climatological Reference Period
-crp = "crp"
+#| label: periods
+
+# Climatological Reference Period (crp)
 crp_beg = 1961
 crp_end = 1990
-# Recent Climate Period
-rcp = "rcp"
-rcp_beg = 2015
-rcp_end = 2024
+
+# Decadal Climate Period (dcp)
+dcp_beg = 2015
+dcp_end = 2024
+
 ```
 
-## ***Packages***
+### Packages
 ```{python}
 #| label: packages
+
+# Primary packages
 import xarray as xr
 import pandas as pd
 import numpy as np
+
+# Utility packages
 import os
 from pathlib import Path
 from datetime import datetime
+
 ```
 
-## ***Directories***
+### Directories
 ```{python}
 #| label: directories
-dir_rd = "data/01_downloaded_data/"
-dir_wr = "data/02_aggregated_data/"
+data_acquisition_dir = "data/01_data_acquisition/"
+climate_aggregation_dir = "data/02_climate_aggregation/"
 ```
 
-## ***Mask***
 
+### Logs
+```{python}
+#| label: logs
+log_df = pd.DataFrame({
+    "file_name": pd.Series(dtype="string"),
+    "variable_name": pd.Series(dtype="string"),
+    "latitude_count": pd.Series(dtype="int"),
+    "longitude_count": pd.Series(dtype="int"),
+    "input_month_count": pd.Series(dtype="int"),
+    "input_values_count": pd.Series(dtype="int"),
+    "agg_month_count": pd.Series(dtype="int"),
+    "agg_values_count": pd.Series(dtype="int")
+})
+
+```
+
+### Land Sea Mask
 ```{python}
 #| label: read_land_sea_mask
-fil = "land_sea_mask.nc"
-pth = Path(dir_rd) / fil
+
+fil = "land_sea_mask_ERA5.nc"
+dir = data_acquisition_dir
+pth = Path(dir) / fil
 ds = xr.open_dataset(
     pth,
     engine="h5netcdf",
@@ -54,24 +88,19 @@ df_lsm = df_lsm.rename(columns={"longitude": "lon", "latitude": "lat"})
 df_lsm = df_lsm[["lon","lat","lsm"]]
 ```
 
-## ***Functions***
+## Functions
 
-### Aggregate Climate
+### Transform Data
 
 ```{python}
-#| label: fn_aggregate_climate
-def fn_aggregate_climate(
-    cp: str,
+#| label: fn_transform_data
+
+def fn_transform_data(
+    ds: xr.Dataset,
     cv: str,
-    vnm: str):
-    fil = cp + "_downloaded_" + cv + ".nc"
-    pth = Path(dir_rd) / fil
-    ds = xr.open_dataset(
-        pth,
-        engine="h5netcdf",
-        chunks="auto", 
-        decode_cf=True
-    )
+    vnm: str
+    ):
+
     ds = ds.drop_vars("number")
     # extract month number from time variable
     ds = ds.assign_coords(mth=ds["valid_time"].dt.month)
@@ -106,17 +135,19 @@ def fn_aggregate_climate(
     # downcast columns to reduce size
     df = df.astype({"lon": "float32", "lat": "float32"})
     df = df.astype({"mth": "int8"})
-    return(df)
+
+    return df
+
 ```
 
-### Pivot to wide form
+### Pivot data
 
 ```{python}
-#| label: fn_pivot_to_wide_form
-def fn_pivot_to_wide_form(
+#| label: fn_pivot_data
+def fn_pivot_data(
     df: pd.DataFrame,
-    cp: str,
-    cv: str):
+    cv: str
+    ):
 
     # Pivot to wide form
     wide_df = df.pivot(index=["lon", "lat"], columns="mth", values=cv)
@@ -134,13 +165,12 @@ def fn_pivot_to_wide_form(
 
 ```
 
-
-### Calculate Grid Area
+### Calculate area
 
 ```{python}
-#| label: fn_calculate_grid_area
+#| label: fn_calculate_area
 
-def fn_calculate_grid_area(df: pd.DataFrame) -> pd.DataFrame:
+def fn_calculate_area(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
     earth_radius_km = 6371 # km
@@ -169,50 +199,152 @@ def fn_calculate_grid_area(df: pd.DataFrame) -> pd.DataFrame:
 
 ```
 
-## ***Main Process***
+### Import Data
 
 ```{python}
-#| label: main_process
+#| label: fn_import_data
+
+def fn_import_nc(
+    filename: str,
+    cv: str,
+    log_df: pd.DataFrame) -> [xr.Dataset, pd.DataFrame]:
+
+    dir = data_acquisition_dir
+    pth = Path(dir) / filename
+    ds = xr.open_dataset(pth, engine="h5netcdf", chunks="auto", decode_cf=True)
+
+    cnt_months = ds.dims["valid_time"]
+    cnt_lat = ds.dims["latitude"]
+    cnt_lon = ds.dims["longitude"]
+
+    if cv == "t":
+        var_name = 't2m'
+        cnt_values = ds['t2m'].size
+    elif cv == "p":
+        var_name = 'tp'
+        cnt_values = ds['tp'].size
+
+    new_row = {
+        "file_name": fil,
+        "variable_name": var_name,
+        "latitude_count": cnt_lat,
+        "longitude_count": cnt_lon,
+        "input_month_count": cnt_months,
+        "input_values_count": cnt_values,
+        "agg_month_count": 12,
+        "agg_values_count": cnt_lat * cnt_lon * 12
+        }
+    log_df = pd.concat([log_df, pd.DataFrame([new_row])], ignore_index=True)
+    return ds, log_df
+
+```
+
+## Aggregate Climate
+
+```{python}
+#| label: aggregate_climate
 
 start = datetime.now()
 
-df1 = fn_aggregate_climate(crp, "t", "t2m")
-df2 = fn_aggregate_climate(crp, "p", "tp")
-df3 = fn_aggregate_climate(rcp, "t", "t2m")
-df4 = fn_aggregate_climate(rcp, "p", "tp")
+fil = "t_avg_" + str(crp_beg) + "-" + str(crp_end) + "_ERA5.nc"
+ds, log_df = fn_import_nc(fil, "t", log_df)
+df1 = fn_transform_data(ds, "t", "t2m")
 
-wide_df1 = fn_pivot_to_wide_form(df1, crp, "t")
-wide_df2 = fn_pivot_to_wide_form(df2, crp, "p")
-wide_df3 = fn_pivot_to_wide_form(df3, rcp, "t")
-wide_df4 = fn_pivot_to_wide_form(df4, rcp, "p")
+fil = "p_avg_" + str(crp_beg) + "-" + str(crp_end) + "_ERA5.nc"
+ds, log_df = fn_import_nc(fil, "p", log_df)
+df2 = fn_transform_data(ds, "p", "tp")
 
-area_df1 = fn_calculate_grid_area(wide_df1)
-area_df2 = fn_calculate_grid_area(wide_df2)
-area_df3 = fn_calculate_grid_area(wide_df3)
-area_df4 = fn_calculate_grid_area(wide_df4)
+fil = "t_avg_" + str(dcp_beg) + "-" + str(dcp_end) + "_ERA5.nc"
+ds, log_df = fn_import_nc(fil, "t", log_df)
+df3 = fn_transform_data(ds, "t", "t2m")
+
+fil = "p_avg_" + str(dcp_beg) + "-" + str(dcp_end) + "_ERA5.nc"
+ds, log_df = fn_import_nc(fil, "p", log_df)
+df4 = fn_transform_data(ds, "p", "tp")
+
+wide_df1 = fn_pivot_data(df1, "t")
+wide_df2 = fn_pivot_data(df2, "p")
+wide_df3 = fn_pivot_data(df3, "t")
+wide_df4 = fn_pivot_data(df4, "p")
+
+area_df1 = fn_calculate_area(wide_df1)
+area_df2 = fn_calculate_area(wide_df2)
+area_df3 = fn_calculate_area(wide_df3)
+area_df4 = fn_calculate_area(wide_df4)
 
 end = datetime.now()
 print("elapsed time: " + str(end - start))
 ```
 
-## ***Save***
+## Save
 
 ```{python}
+#| label: save
 
-fil = "crp_aggregated_t.parquet"
-pth = Path(dir_wr) / fil
+fil = "t_agg_" + str(crp_beg) + "-" + str(crp_end) + ".parquet"
+dir = climate_aggregation_dir
+pth = Path(dir) / fil
 area_df1.to_parquet(pth, index=False)
 
-fil = "crp_aggregated_p.parquet"
-pth = Path(dir_wr) / fil
+fil = "p_agg_" + str(crp_beg) + "-" + str(crp_end) + ".parquet"
+dir = climate_aggregation_dir
+pth = Path(dir) / fil
 area_df2.to_parquet(pth, index=False)
 
-fil = "rcp_aggregated_t.parquet"
-pth = Path(dir_wr) / fil
+fil = "t_agg_" + str(dcp_beg) + "-" + str(dcp_end) + ".parquet"
+dir = climate_aggregation_dir
+pth = Path(dir) / fil
 area_df3.to_parquet(pth, index=False)
 
-fil = "rcp_aggregated_p.parquet"
-pth = Path(dir_wr) / fil
+fil = "p_agg_" + str(dcp_beg) + "-" + str(dcp_end) + ".parquet"
+dir = climate_aggregation_dir
+pth = Path(dir) / fil
 area_df4.to_parquet(pth, index=False)
 
+```
+
+## Display Log
+
+```{python}
+#| label: display_log
+
+log_rename_df = log_df.rename(columns={
+    "file_name": "Input File Name",
+    "variable_name": "ERA5 Variable",
+    "latitude_count": "Latitudes",
+    "longitude_count": "Longitudes",
+    "input_month_count": "Input Months",
+    "input_values_count": "Input Values",
+    "agg_month_count": "Output Months",
+    "agg_values_count": "Output Values"
+})
+
+# use pandas styler to set column widths and alignment
+log_styled_df = (
+    log_rename_df.style
+        .hide(axis="index")   # hides row index column
+        .set_table_styles([
+            {"selector": ".col0, th.col0",
+             "props": [("min-width", "120px"), ("text-align", "left")]},
+            {"selector": ".col1, th.col1",
+             "props": [("min-width", "70px"), ("text-align", "center")]},
+            {"selector": ".col2, th.col2",
+             "props": [("min-width", "90px"), ("text-align", "center")]},
+            {"selector": ".col3, th.col3",
+             "props": [("min-width", "90px"), ("text-align", "center")]},
+            {"selector": ".col4, th.col4",
+             "props": [("min-width", "80px"), ("text-align", "center")]},
+            {"selector": ".col5, th.col5",
+             "props": [("min-width", "100px"), ("text-align", "center")]},
+            {"selector": ".col6, th.col6",
+             "props": [("min-width", "80px"), ("text-align", "center")]},
+            {"selector": ".col7, th.col7",
+             "props": [("min-width", "100px"), ("text-align", "center")]}
+        ])
+        # add the thousands-separator formatting
+        .format({"Input Values": "{:,}",
+                 "Output Values": "{:,}"})
+)
+
+log_styled_df
 ```

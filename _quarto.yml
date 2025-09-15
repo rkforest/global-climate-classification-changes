@@ -5,12 +5,13 @@ project:
 
 book:
   title: "Climate Classification Changes"
-  subtitle: "Recent Period (2015–2024) vs WMO Climatological Reference Period"
+  subtitle: "Recent Decadal Period (2015–2024) vs WMO Climatological Reference Period"
   author: "Rick Forest"
   date: today
 
   chapters:
     - index.qmd
+    
     - 01_data_acquisition.qmd
     - 02_climate_aggregation.qmd
     - 03_determinant_calculation.qmd
@@ -20,7 +21,7 @@ book:
 execute:
   freeze: auto
   cache: true
-  cache-dir: .quarto/cache
+  cache-dir: _cache
   warning: false
   message: false
 

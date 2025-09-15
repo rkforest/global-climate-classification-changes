@@ -2,56 +2,67 @@
 title: "Determinant Calculation"
 ---
 
-The classification definitions for the Koppen-Trewartha classification are based on this analysis description:
+Calculate climate classification determinants using the temperature and precipitation data.
+
+The calculation process is done using **R**.
+
+It will use packages:
+
+  * **tidyverse**
+  
+    * to calculate the calculate the temparature and precipitation determinants
+    * to calculate the aridity threshold
+    * to summarize and combine results for each climate period
+
+  * **gt**
+
+    * to produce and display a table of the summarized results
+
+
+The definitions for the Koppen-Trewartha classification are based on this research:
 <https://scispace.com/pdf/climate-classification-revisited-from-koppen-to-trewartha-40ofumhxzu.pdf>
 
-## ***Periods***
+## Initialization
+
+### Periods
 ```{r}
-#| label: climate_periods
-# Climatological Reference Period
-crp = "CRP"
-crp_beg = 1961
-crp_end = 1990
-crp_lbl <- paste0(crp, " ", crp_beg, "-", crp_end)
-# Recent Climate Period
-rcp = "RCP"
-rcp_beg = 2015
-rcp_end = 2024
-rcp_lbl <- paste0(rcp, " ", rcp_beg, "-", rcp_end)
+#| label: periods
+
+# Climatological Reference Period (crp)
+crp_beg <- 1961
+crp_end <- 1990
+
+# Decadal Climate Period (dcp)
+dcp_beg <- 2015
+dcp_end <- 2024
+
 ```
 
-## ***Packages***
+### Packages
 ```{r}
 #| label: packages
 suppressPackageStartupMessages({
+
+  # Primary packages
   library(tidyverse)
-  library(arrow)
   library(gt)
+
+  # Utililty packages
+  library(arrow) # to import and export files in parquet format
+  library(patchwork) # to arrange multiple plots into one visualization
+  library(RColorBrewer)
 })
 ```
 
-## ***Directories***
+### Directories
 ```{r}
 #| label: directories
-dir_rd <- "data/02_aggregated_data/"
-dir_wr <- "data/03_transformed_data/"
+climate_aggregation_dir <- "data/02_climate_aggregation/"
+determinant_calculation_dir <- "data/03_determinant_calculation/"
 ```
 
 
-## ***Import***
-```{r}
-pth <- paste(dir_rd, "crp_aggregated_t.parquet", sep = "")
-crp_t_df <- read_parquet(pth) 
-pth <- paste(dir_rd, "crp_aggregated_p.parquet", sep = "")
-crp_p_df <- read_parquet(pth) 
-
-pth <- paste(dir_rd, "rcp_aggregated_t.parquet", sep = "")
-rcp_t_df <- read_parquet(pth) 
-pth <- paste(dir_rd, "rcp_aggregated_p.parquet", sep = "")
-rcp_p_df <- read_parquet(pth) 
-```
-
-## ***Functions***
+## Functions
 
 ### Temperature Determinants
 
@@ -65,7 +76,9 @@ fn_t_determinants <- function(df) {
         tavg = (m1 + m2 + m3 + m4 + m5 + m6 + m7 + m8 + m9 + m10 + m11 + m12) / 12,
         tmax = pmax(m1, m2, m3, m4, m5, m6, m7, m8, m9, m10, m11, m12),
         tmin = pmin(m1, m2, m3, m4, m5, m6, m7, m8, m9, m10, m11, m12),
-        tg10 = rowSums(across(all_of(mcols), ~ .x >= 10))
+        tg10 = rowSums(across(all_of(mcols), ~ .x >= 10)),
+        tg10 = as.integer(tg10)
+
     )  
   df <- df |>
     select(-m1, -m2, -m3, -m4, -m5, -m6, -m7, -m8, -m9, -m10, -m11, -m12)
@@ -86,11 +99,12 @@ fn_p_determinants <- function(df) {
       ptot = (m1 + m2 + m3 + m4 + m5 + m6 + m7 + m8 + m9 + m10 + m11 + m12),
       pmin = pmin(m1, m2, m3, m4, m5, m6, m7, m8, m9, m10, m11, m12),
       pl60 = rowSums(across(all_of(mcols), ~ .x < 60)),
-      wtot = case_when(
+      pl60 = as.integer(pl60),
+      pwnt = case_when(
         lat >= 0 ~ (m1 + m2 + m3 + m10 + m11 + m12),
         lat < 0 ~ (m4 + m5 + m6 + m7 + m8 + m9)
       ),
-      stot = case_when(
+      psmr = case_when(
         lat >= 0 ~ (m4 + m5 + m6 + m7 + m8 + m9),
         lat < 0 ~  (m1 + m2 + m3 + m10 + m11 + m12)
       )
@@ -123,7 +137,7 @@ fn_aridity_threshold <- function(df) {
       term1 = (2.3 * tavg),
       term2 = 
         if_else(ptot != 0, 
-          (0.64 * ((wtot / ptot) * 100)), # multiply by 100 to convert to %
+          (0.64 * ((pwnt / ptot) * 100)), # multiply by 100 to convert to %
           0),
       term3 = 41,
       athr = (term1 - term2 + term3) * 10 # convert result from cm to mm
@@ -135,23 +149,63 @@ fn_aridity_threshold <- function(df) {
 }
 ```
 
-### Summarize Means
+### Weighted Average
 
 ```{r}
-#| label: fn_summarize_means
-fn_summarize_results <- function(df) {
-  df_means <- df |> 
-    select(-c(1:4)) |> 
-    # this format is now recommended for dplyr
-    summarise(across(everything(), \(x) mean(x, na.rm = TRUE))) |> 
-    pivot_longer(everything(),
-               names_to = "stat_id",
-               values_to = "stat_value")
-  return(df_means)
+#| label: fn_weighted_average
+fn_weighted_average <- function(df) {
+
+   metric_order <- c("tavg", "tmax", "tmin", "tg10", "ptot",
+                     "pwnt", "psmr", "pmin", "pl60", "athr")
+
+   df_wgtavg  <- df %>%
+    select(area,tavg,tmax,tmin,tg10,
+           ptot,pmin,pl60,pwnt,psmr,athr) |>
+    pivot_longer(
+      cols = c(tavg,tmax,tmin,tg10,ptot,pmin,pl60,pwnt,psmr,athr),
+      names_to = "metric",
+      values_to = "value"
+    ) |>
+    group_by(metric) %>%
+    summarise(
+      wgtavg = weighted.mean(value, w = area, na.rm = TRUE),
+      .groups = "drop"
+    )
+
+    df_wgtavg <- df_wgtavg |>
+      mutate(metric = factor(metric, levels = metric_order)) %>%
+      arrange(metric)
+
+    return(df_wgtavg)
 }
 ```
 
-## ***Main Process***
+## Import
+```{r}
+#| label: import
+
+fil = paste0("t_agg_", crp_beg, "-", crp_end, ".parquet")
+dir <- climate_aggregation_dir 
+pth <- paste0(dir, fil)
+crp_t_df <- read_parquet(pth) 
+
+fil = paste0("p_agg_", crp_beg, "-", crp_end, ".parquet")
+dir <- climate_aggregation_dir 
+pth <- paste0(dir, fil)
+crp_p_df <- read_parquet(pth) 
+
+fil = paste0("t_agg_", dcp_beg, "-", dcp_end, ".parquet")
+dir <- climate_aggregation_dir 
+pth <- paste0(dir, fil)
+dcp_t_df <- read_parquet(pth) 
+
+fil = paste0("p_agg_", dcp_beg, "-", dcp_end, ".parquet")
+dir <- climate_aggregation_dir 
+pth <- paste0(dir, fil)
+dcp_p_df <- read_parquet(pth) 
+```
+
+## Main Process
 
 ```{r}
 #| label: main_process
@@ -161,68 +215,495 @@ p_df <- fn_p_determinants(crp_p_df)
 d_df <- t_df |>
   left_join(p_df, by = c("lon", "lat", "area", "lsm"))
 crp_df <- fn_aridity_threshold(d_df)
-pth = paste0(dir_wr, "crp_determinants.parquet")
+pth = paste0(determinant_calculation_dir, "crp_determinants.parquet")
 write_parquet(crp_df, pth)
-df1 <- fn_summarize_results(crp_df)
 
-t_df <- fn_t_determinants(rcp_t_df)
-p_df <- fn_p_determinants(rcp_p_df)
+t_df <- fn_t_determinants(dcp_t_df)
+p_df <- fn_p_determinants(dcp_p_df)
 d_df <- t_df |>
   left_join(p_df, by = c("lon", "lat", "area", "lsm"))
-rcp_df <- fn_aridity_threshold(d_df)
-pth = paste0(dir_wr, "rcp_determinants.parquet")
-write_parquet(rcp_df, pth)
-df2 <- fn_summarize_results(rcp_df)
+dcp_df <- fn_aridity_threshold(d_df)
+pth = paste0(determinant_calculation_dir, "dcp_determinants.parquet")
+write_parquet(dcp_df, pth)
 
-df_joined <- df1 |> 
-  full_join(df2, by = "stat_id") |> 
+```
+
+```{r}
+#| label: build_table
+df1 <- fn_weighted_average(crp_df)
+df2 <- fn_weighted_average(dcp_df)
+
+df_wgtavg <- df1 |> 
+  full_join(df2, by = "metric") |> 
   rename(
-    crp_stat = stat_value.x,
-    rcp_stat = stat_value.y
-  ) |> 
+    crp_metric = wgtavg.x,
+    dcp_metric = wgtavg.y) |> 
+  mutate(metric_chg = dcp_metric - crp_metric) |> 
+  mutate(pct_chg = metric_chg / crp_metric) |> 
   mutate(
-    stat_id = recode(stat_id,
-      "tavg" = "Annual Avg Monthly Temperature",
-      "tmax" = "Annual Max Monthly Temperature",
-      "tmin" = "Annual Min Monthly Temperature",
-      "tg10" = "Annual Months with Temperature > 10°C",
-      "ptot" = "Annual Total Precipitation",
-      "pmin" = "Annual Min Monthly Precipitation",
-      "pl60" = "Annual Months with Precipitation < 60mm",
-      "wtot" = "Annual Total Winter Precipitation",
-      "stot" = "Annual Total Summer Precipitation",
+    metric = recode(metric,
+      "tavg" = "Temperature: Avg",
+      "tmax" = "Temperature: Max",
+      "tmin" = "Temperature: Min",
+      "tg10" = "Temperature: Months > 10°C",
+      "ptot" = "Precipitation: Total",
+      "pmin" = "Precipitation: Min",
+      "pl60" = "Precipitation: Months < 60mm",
+      "pwnt" = "Precipitation: Winter",
+      "psmr" = "Precipitation: Summer",
       "athr" = "Aridity Threshold"
     )
   )
 
+
 ```
 
-## ***Summary***
+## Summary
 
 ```{r}
+#| label: display_table
+rows_to_style <- which(
+  df_wgtavg[["pct_chg"]] > 0.05)
+
 gt_tbl <- 
-  df_joined |>
-    gt(rowname_col = "stat_id") |>
+  df_wgtavg |>
+    gt(rowname_col = "metric") |>
     tab_header(
-      title = "Climate Classification Determinants Summary"
-    ) |>
-    tab_spanner(
-      label = crp_lbl,
-      columns = c(crp_stat)
-    ) |>
-    tab_spanner(
-      label = rcp_lbl,
-      columns = c(rcp_stat)
+      title = "Climate Classification Determinants Summary",
+      subtitle = "Area-Weighted Averages"
     ) |>
     cols_label(
-      crp_stat = "Average Determinant",
-      rcp_stat = "Average Determinant",
+      crp_metric = "CRP",
+      dcp_metric = "DCP",
+      metric_chg = "Change",
+      pct_chg = "% Change",
     ) |>
     fmt_number(
-      columns = c(crp_stat, rcp_stat),
+      columns = c(crp_metric, dcp_metric, metric_chg, pct_chg),
       decimals = 2
-   )
+    ) |>
+    tab_style(
+      style = cell_fill(color = "#e6f0fa"),          # highlight color
+      locations = cells_body(columns = "pct_chg", rows = rows_to_style)
+    )
 
 gt_tbl
+
+```
+
+## Summary by Determiant
+
+### Temperature
+
+Highest Monthly Maximum Temperature is used to identify cold regions, using these thresholds:  
+
+  * Ice Cap: < 0 °C
+  * Tundra : 0°C to 10°C
+
+```{r}
+#| label: p_F
+#| fig-width: 10
+#| fig-aspect: .7   
+#| out-width: 100%
+#| 
+df1 <- crp_df |>
+  filter(lsm >0 ) |>
+  select(lon, lat, area, tmax) 
+df2 <- dcp_df |>
+  filter(lsm >0 ) |>
+  select(lon, lat, area, tmax) 
+dfj <- df1 |>
+  left_join(df2, by = c("lon", "lat", "area")) |>
+  select(tmax.x, tmax.y, area) |>
+  rename(CRP = tmax.x,
+         DCP = tmax.y)
+
+df_long <- dfj %>%
+  pivot_longer(
+    cols = c(CRP, DCP),
+    names_to  = "period",
+    values_to = "tmax"
+  ) %>%
+  mutate(
+    temp_cat = factor(
+      case_when(
+        tmax < 0 ~   "< 0 °C",
+        tmax <= 10 ~ "0 to 10 °C",
+        tmax > 10 ~ "> 10 °C"),
+      levels = c("< 0 °C", "0 to 10 °C", "> 10 °C"), 
+    )
+  )
+
+p1 <- ggplot(df_long, aes(
+  x = tmax,
+  weight = area,
+  fill = temp_cat
+)) +
+  geom_histogram(
+    binwidth = 5,
+    boundary = 10,         # make sure 10 °C is a bin edge
+    color = "white"
+  ) +
+  scale_fill_manual(
+    values = c("< 0 °C" = "#27679a",   # cool blue-teal
+               "0 to 10 °C" = "#7fb5db",  # lighter blue-teal
+               "> 10 °C" = "#d9d9d9"),  # neutral grey
+    name = "Category"
+  ) +
+  scale_x_continuous(
+    breaks = seq(-40, ceiling(max(df_long$tmax, na.rm = TRUE)), by = 10)
+  ) +
+  labs(
+    title = "Highest Monthly Maximum Temperature",
+    subtitle = "Identifies Cold Climates",
+    x = "Maximum Average Monthly Temperature (°C)",
+    y = "Weighted Count (by Area)"
+  ) +
+  facet_wrap(~ period, ncol = 1) +   # one panel for CRP, one for DCP
+  theme_minimal(base_size = 14)
+
+df1 <- crp_df |>
+  filter(lsm > 0 ) |>
+  mutate(Area = area * lsm) |>
+  mutate(
+    Climate = factor(
+      case_when(
+        tmax < 0   ~ "Ice Cap (T < 0)",
+        tmax <= 10 ~ "Boreal (T <= 10",
+        TRUE       ~ "Not Cold (T > 10)"),
+      levels = c(
+        "Ice Cap (T < 0)", 
+        "Boreal (T <= 10", 
+        "Not Cold (T > 10)"), 
+    )
+  ) |>
+  select(lon, lat, ptot, Area, Climate) |>
+  group_by(Climate) |>
+  summarize(sum_area=sum(Area), .groups = "drop")
+
+df2 <- dcp_df |>
+  filter(lsm > 0 ) |>
+  mutate(Area = area * lsm) |>
+  mutate(
+    Climate = factor(
+      case_when(
+        tmax < 0   ~ "Ice Cap (T < 0)",
+        tmax <= 10 ~ "Boreal (T <= 10",
+        TRUE       ~ "Not Cold (T > 10)"),
+      levels = c(
+        "Ice Cap (T < 0)", 
+        "Boreal (T <= 10", 
+        "Not Cold (T > 10)"), 
+    )
+  ) |>
+  select(lon, lat, ptot, Area, Climate) |>
+  group_by(Climate) |>
+  summarize(sum_area=sum(Area), .groups = "drop")
+
+dfj <- df1 |>
+  left_join(df2, by = c("Climate")) |>
+  rename(CRP = sum_area.x,
+         DCP = sum_area.y) |>
+  pivot_longer(
+    cols = c(CRP, DCP),
+    names_to  = "Period",
+    values_to = "Area"
+  )
+
+dfj_pct <- dfj |>
+  group_by(Period) |>
+  mutate(pct_area = Area / sum(Area) * 100)
+
+p2 <- ggplot(dfj_pct, 
+  aes(x = Climate, y = pct_area, fill = Period)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_brewer(palette = "Paired") +  # or "Dark2", "Paired", etc.
+  labs(
+    # title = "Maximum Monthly Temperature (T)",
+    # subtitle = "Identifies Cold Climates",
+    x = "",
+    y = "% of Total Area",
+    fill = "Period"
+  ) +
+  theme_minimal(base_size = 14)
+
+p1
+p2
+```
+
+Lowest Monthly Average Temperature is used to identify hot regions, using this threshold:  
+
+  * Tropical: > 18°C
+
+```{r}
+#| label: p_A
+#| fig-width: 10
+#| fig-aspect: .7   
+#| out-width: 100%
+
+df1 <- crp_df |>
+  filter(lsm >0 ) |>
+  select(lon, lat, area, tmin) 
+df2 <- dcp_df |>
+  filter(lsm >0 ) |>
+  select(lon, lat, area, tmin) 
+dfj <- df1 |>
+  left_join(df2, by = c("lon", "lat", "area")) |>
+  select(tmin.x, tmin.y, area) |>
+  rename(CRP = tmin.x,
+         DCP = tmin.y)
+
+df_long <- dfj %>%
+  pivot_longer(
+    cols = c(CRP, DCP),
+    names_to  = "period",
+    values_to = "tmin"
+  ) %>%
+  mutate(
+    temp_cat = factor(
+      case_when(
+        tmin >= 18 ~ ">= 18 °C",
+        tmin < 18  ~ "< 18 °C"),
+      levels = c("< 18 °C", ">= 18 °C"), 
+    )
+  )
+
+p3 <- ggplot(df_long, aes(
+  x = tmin,
+  weight = area,
+  fill = temp_cat
+)) +
+  geom_histogram(
+    binwidth = 3,
+    boundary = 18,         # make sure 10 °C is a bin edge
+    color = "white"
+  ) +
+  scale_fill_manual(
+    values = c(">= 18 °C" = "#8b0000",   # classic deep crimson
+               "< 18 °C" = "#d9d9d9"),  # neutral grey
+    name = "Category"
+  ) +
+  scale_x_continuous(
+    breaks = seq(0, max(df_long$tmin, na.rm = TRUE), by = 6)
+  ) +
+  labs(
+    title = "Classification Determinant: Monthly Min Temperature",
+    subtitle = "Identifies Hot Climates",
+    x = "Minimum Monthly Average Temperature (°C)",
+    y = "Weighted Count (by Area)"
+  ) +
+  facet_wrap(~ period, ncol = 1) +   # one panel for CRP, one for DCP
+  theme_minimal(base_size = 14)
+
+p3
+```
+
+The count of months with average temperature > 10°C is used to identify subtropical, temperate, and boreal climates, using these thresholds: 
+
+  * Subtropical: > 8 or more months
+  * Temperate: 4 to 7 months
+  * Boreal: 1 to 3 months
+
+```{r}
+#| label: p_CDE
+#| fig-width: 10
+#| fig-aspect: .7   
+#| out-width: 100%
+
+df1 <- crp_df |>
+  filter(lsm >0 ) |>
+  select(lon, lat, area, tg10) 
+df2 <- dcp_df |>
+  filter(lsm >0 ) |>
+  select(lon, lat, area, tg10) 
+
+df <- df1 |>
+  left_join(df2, by = c("lon", "lat", "area")) |>
+  select(tg10.x, tg10.y, area) |>
+  rename(CRP = tg10.x,
+         DCP = tg10.y)
+
+bucket <- function(x) case_when(
+  x >= 8 ~ "8-12",
+  x >= 4 ~ "4-7",
+  x >= 1 ~ "1-3",
+  x == 0 ~ "0"
+)
+
+df_long <- df %>%
+  mutate(
+    cat_crp = bucket(CRP),
+    cat_dcp = bucket(DCP)
+  ) %>%
+  pivot_longer(
+    cols = c(cat_crp, cat_dcp),
+    names_to = "period",
+    values_to = "category"
+  ) %>%
+  group_by(period, category) %>%
+  summarise(total_area = sum(area, na.rm = TRUE), .groups = "drop") %>%
+  mutate(period = recode(period, cat_crp = "CRP", cat_dcp = "DCP")) %>%
+  # compute proportion of grand total
+  mutate(prop_area = total_area / sum(total_area))
+
+df_long$category <- factor(df_long$category,
+                           levels = c("0", "1-3", "4-7", "8-12"))
+
+ggplot(df_long,
+       aes(x = category, y = prop_area, fill = period)) +
+  geom_col(position = "dodge", width = 0.7) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  scale_fill_brewer(palette = "Paired") + # or "Dark2", "Paired", etc.
+  labs(
+    title = "Classification Determinant: Temperature",
+    subtitle = "Months with Temperature > 10°C",
+    x = "Months per Year",
+    y = "Land Area %",
+    fill = "Climate\nPeriod",
+  ) +
+  theme_minimal(base_size = 14)
+
+```
+
+### Precipitation
+
+Total Precipitation will be used to identify dry regions.  These are the climates identified by this determinant:
+
+  * Desert (Arid)     : < Aridity Threshold / 2
+  * Steppe (Semiarid) : < Aridity Threshold
+
+
+```{r}
+#| label: p_B
+#| fig-width: 10
+#| fig-aspect: .7   
+#| out-width: 100%
+
+df1 <- crp_df |>
+  filter(lsm > 0 ) |>
+  mutate(Area = area * lsm) |>
+  mutate(
+    Climate = factor(
+      case_when(
+        ptot < (athr/2) ~ "Arid (TP < AT/2)",
+        ptot <= athr    ~ "Semi-Arid (TP <= AT",
+        TRUE            ~ "Not Dry (Pt >= AT)"),
+      levels = c(
+        "Arid (TP < AT/2)", 
+        "Semi-Arid (TP <= AT", 
+        "Not Dry (Pt >= AT)"), 
+    )
+  ) |>
+  select(lon, lat, ptot, Area, Climate) |>
+  group_by(Climate) |>
+  summarize(sum_area=sum(Area), .groups = "drop")
+
+df2 <- dcp_df |>
+  filter(lsm > 0 ) |>
+  mutate(Area = area * lsm) |>
+  mutate(
+    Climate = factor(
+      case_when(
+        ptot < (athr/2) ~ "Arid (TP < AT/2)",
+        ptot <= athr    ~ "Semi-Arid (TP <= AT",
+        TRUE            ~ "Not Dry (Pt >= AT)"),
+      levels = c(
+        "Arid (TP < AT/2)", 
+        "Semi-Arid (TP <= AT", 
+        "Not Dry (Pt >= AT)"), 
+    )
+  ) |>
+  select(lon, lat, ptot, Area, Climate) |>
+  group_by(Climate) |>
+  summarize(sum_area=sum(Area), .groups = "drop")
+
+dfj <- df1 |>
+  left_join(df2, by = c("Climate")) |>
+  rename(CRP = sum_area.x,
+         DCP = sum_area.y) |>
+  pivot_longer(
+    cols = c(CRP, DCP),
+    names_to  = "Period",
+    values_to = "Area"
+  )
+
+dfj_pct <- dfj |>
+  group_by(Period) |>
+  mutate(pct_area = Area / sum(Area) * 100)
+
+
+ggplot(dfj_pct, 
+  aes(x = Climate, y = pct_area, fill = Period)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_brewer(palette = "Paired") +  # or "Dark2", "Paired", etc.
+  labs(
+    title = "Total Precipitation (TP) vs Aridity Threshold (AT)",
+    subtitle = "Identifies Dry Climates",
+    x = "",
+    y = "% of Total Area",
+    fill = "Period"
+  ) +
+  theme_minimal(base_size = 14)
+
+```
+
+```{r}
+#| label: p_seasonal
+#| fig-width: 10
+#| fig-aspect: .7   
+#| out-width: 100%
+
+df1 <- crp_df |>
+  filter(lsm > 0 ) |>
+  select(lon, lat, ptot, pwnt, psmr, area) 
+df2 <- dcp_df |>
+  filter(lsm > 0 ) |>
+  select(lon, lat, ptot, pwnt, psmr, area) 
+dfj <- df1 |>
+  left_join(df2, by = c("lon", "lat", "area")) |>
+  select(ptot.x, ptot.y, pwnt.x, pwnt.y, psmr.x, psmr.y, area)
+
+df_long <- dfj %>%
+  pivot_longer(
+    cols = c(ptot.x, ptot.y, pwnt.x, pwnt.y, psmr.x, psmr.y),
+    names_to = c("metric", "period"),
+    names_pattern = "^p(.*)\\.(x|y)$",
+    values_to = "precip"
+  ) %>%
+  mutate(
+    metric = recode(metric,
+                    smr = "Summer",
+                    wnt = "Winter",
+                    tot = "Total"),
+    period = recode(period,
+                    x = "CRP",
+                    y = "DCP")
+  )
+
+# area-weighted mean per metric × period
+summ <- df_long %>%
+  group_by(metric, period) %>%
+  summarise(
+    mean_precip = weighted.mean(precip, w = area, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+ggplot(summ, aes(x = period, y = mean_precip, fill = period)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~ metric, ncol = 3) +  
+  labs(
+    title = "Seasonal Precipitation",
+    x = NULL,
+    y = "Precipitation (mm)",
+    fill = "period"
+  ) +
+  scale_fill_brewer(palette = "Paired") +  # or "Dark2", "Paired", etc.
+  theme_minimal(base_size = 14) +
+  theme(
+    #legend.position = "none",
+    #strip.text = element_text(face = "bold"),
+    axis.text.x = element_blank(),                  # hide tick labels if desired
+    axis.ticks.x = element_blank()
+  )
 
 ```
