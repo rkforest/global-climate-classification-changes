@@ -5,6 +5,11 @@ format: html
 
 ## To D:
 
+### installation
+
+brew install gdal proj geos
+brew install arrow zlib lz4 zstd openssl@3
+
 book format
  + fix right margin
  + update the overview steps
