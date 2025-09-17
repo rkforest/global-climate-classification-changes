@@ -1,7 +1,8 @@
 ---
 title: "Climate Aggregation"
 engine: jupyter
-jupyter: myproj
+jupyter: 
+  kernel: gccc-venv
 ---
 
 Aggregate temperature and precipitation data for each climate period producing a single value for each longitude, latitude and month number combination.  Reshape data from long form to wide form: one row per grid cell with each monthly value in a separate column.  This will facilitate the calculation of climate classification determinants.

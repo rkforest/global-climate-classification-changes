@@ -8,7 +8,12 @@ format: html
 ### installation
 
 brew install gdal proj geos
-brew install arrow zlib lz4 zstd openssl@3
+brew install arrow zlib lz4 zstd openssl
+
+in project virtual environment:
+  source ~/gccc/.venv/bin/activate
+
+  pip install dask h5netcdf pyarrow (maybe netCDF4, h5py also)
 
 book format
  + fix right margin

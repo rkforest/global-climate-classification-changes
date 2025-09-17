@@ -1,7 +1,8 @@
 ---
 title: "Data Acquisition"
 engine: jupyter
-jupyter: myproj
+jupyter: 
+  kernel: gccc-venv
 ---
 
 Download and save ERA5 climate reanalysis datasets using the Climate Data Store CDSAPI:  <https://cds.climate.copernicus.eu/how-to-api>. 
