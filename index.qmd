@@ -4,11 +4,12 @@ This project analyzes global climate classification changes by comparing climate
 
 The analysis will be done by applying the Köppen-Trewartha climate classification system to downloaded ERA5 climate data, identifying and visualizing the climate classification changes.
 
-# Key Finding
+::: {.callout-important}
+### Key Finding
+Nearly 10% of Earth’s land surface changed climate classification.
+:::
 
-Nearly 10 percent of the earth's land surface has undergone a climate classification change when comparing climate averages of the two periods.
-
-# Process
+## Process
 
 This project uses a multi-step process:
 
@@ -19,11 +20,11 @@ This project uses a multi-step process:
 3. **Determinant Calculation**
   + Calculate the classification determinants required by the Köppen–Trewartha system.
 4. **Climate Classification**
-  + Apply the Köppen–Trewartha classification sytem to assign climate groups and types. 
+  + Apply the Köppen–Trewartha classification system to assign climate groups and types. 
 5. **Change Analysis**
   + Identify and visualize the shifts in classification between the climate periods. 
 
-## Modules
+## Chapter Links
 
 Use the sidebar to navigate, or read in order using the chapter links below.
 
@@ -32,15 +33,3 @@ Use the sidebar to navigate, or read in order using the chapter links below.
 - [03 — Determinant Calculation](03_determinant_calculation.qmd)  
 - [04 — Climate Classification](04_climate_classification.qmd)  
 - [05 — Change Analysis](05_change_analysis.qmd)  
-
-## Render
-
-Render the full book:
-```bash
-quarto render
-```
-
-Live preview (auto-reload in the browser):
-```bash
-quarto preview
-```
