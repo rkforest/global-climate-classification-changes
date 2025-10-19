@@ -1,31 +1,32 @@
 # Global Climate Classification Changes
+
+---
+
 Author: Rick Forest  
+
+## Description  
+
+This project analyzes global climate classification changes by comparing climate data from a recent Decadal Climate Period (2015–2024) with the WMO Climatological Reference Period (1961–1990).  
+
+The analysis will be done by applying the Köppen-Trewartha climate classification system to downloaded ERA5 climate data, identifying and visualizing the climate classification changes.  
+
 ---
 
-## Introduction: 
+## Key Findings  
 
-This project analyzes global climate classification changes by comparing climate data from a recent Decadal Climate Period (2015–2024) with the WMO Climatological Reference Period (1961–1990).
-
-The analysis will be done by applying the Köppen-Trewartha climate classification system to downloaded ERA5 climate data, identifying and visualizing the climate classification changes.
+9.6% of the Earth’s land surface has changed climate classification.  
+2.6% of the Earth’s land surface has changed to a dry classification.  
+3.0% of the Earth’s land surface has changed from cold (polar and boreal) to temperate.  
 ---
 
-## Key Findings: 
+## Process Steps
 
-9.6% of the Earth’s land surface has changed climate classification.
-2.6% of the Earth’s land surface has changed to a dry classification.
-3.0% of the Earth’s land surface has changed from cold (polar and boreal) to temperate.
----
-
-## Process
-
-This project uses a multi-step process:
-
-Data Acquisition - download and save ERA5 climate reanalysis gridded data.
-Data Aggregation - aggregate multi-year monthly data into climatological averages.
-Determinant Calculation - calculate climate classification determinants
-Climate Classification - apply the Köppen–Trewartha classification system
-Change Identification - identify the shifts in classification between the two periods
-Change Visualization - visualize the key changes (increased dry and decreased cold areas)
+1. Data Acquisition - download and save ERA5 climate reanalysis gridded data.
+2. Data Aggregation - aggregate multi-year monthly data into climatological averages.
+3. Determinant Calculation - calculate climate classification determinants
+4. Climate Classification - apply the Köppen–Trewartha classification system
+5. Change Identification - identify the shifts in classification between the two periods
+6. Change Visualization - visualize the key changes (increased dry and decreased cold areas)
 ---
 
 ![Positron IDE](https://img.shields.io/badge/Editor-Positron-blue?logo=rstudio)
